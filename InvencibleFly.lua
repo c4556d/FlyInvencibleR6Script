@@ -1,4 +1,4 @@
--- Flight v6.4 - Adaptado (resumido)
+-- Flight v6.4 - Adaptado: BodyMovers creados solo en ON / destruidos en OFF
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -10,7 +10,7 @@ local humanoid = character:WaitForChild("Humanoid")
 local hrp = character:WaitForChild("HumanoidRootPart")
 local camera = workspace.CurrentCamera
 
--- CONFIG
+-- CONFIG (igual que antes)
 local BASE_SPEED = 39.93
 local BOOST_SPEEDS = {79.87, 199.66, 319.46}
 local FOV_BASE = camera.FieldOfView
@@ -49,7 +49,11 @@ local tAccum = 0
 local currentCamRoll = 0
 local wasMoving = false
 
--- UI
+-- Body movers variables (nil hasta crear)
+local bodyVel = nil
+local bodyGyro = nil
+
+-- UI (idéntica a la anterior, resumida aquí)
 local gui = Instance.new("ScreenGui")
 gui.Name = "FlightUI_v6_final_match"
 gui.ResetOnSpawn = false
@@ -147,66 +151,65 @@ end
 
 local function tween(obj, props, t) t = t or 0.28 TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), props):Play() end
 
-local bodyVel = Instance.new("BodyVelocity")
-bodyVel.MaxForce = Vector3.new(1e5, 1e8, 1e5)
-bodyVel.Velocity = Vector3.new(0,0,0)
-bodyVel.Parent = hrp
+-- Body movers management
+local function createBodyMovers()
+	-- Si ya existen, aseguramos que están parented
+	if bodyVel and bodyVel.Parent and bodyVel.Parent == hrp then return end
+	-- destroy prev (por seguridad)
+	if bodyVel then pcall(function() bodyVel:Destroy() end) bodyVel = nil end
+	if bodyGyro then pcall(function() bodyGyro:Destroy() end) bodyGyro = nil end
 
-local bodyGyro = Instance.new("BodyGyro")
-bodyGyro.MaxTorque = Vector3.new(0,0,0)
-bodyGyro.P = 3000
-bodyGyro.D = 200
-bodyGyro.Parent = hrp
+	bodyVel = Instance.new("BodyVelocity")
+	bodyVel.MaxForce = Vector3.new(1e5, 1e8, 1e5)
+	bodyVel.Velocity = Vector3.new(0,0,0)
+	bodyVel.Parent = hrp
 
--- ANIM IDS (base)
-local ANIMS = {
-	-- idle/forward/side/back are mapped to the new combined sets below
-	BOOST_CYAN = 90872539, -- keep original cyan
-}
+	bodyGyro = Instance.new("BodyGyro")
+	bodyGyro.MaxTorque = Vector3.new(4e6,4e6,4e6)
+	bodyGyro.P = 3000
+	bodyGyro.D = 200
+	bodyGyro.Parent = hrp
+end
 
+local function removeBodyMovers()
+	if bodyVel then
+		pcall(function() bodyVel:Destroy() end)
+		bodyVel = nil
+	end
+	if bodyGyro then
+		pcall(function() bodyGyro:Destroy() end)
+		bodyGyro = nil
+	end
+end
+
+-- Anim handling (igual que en el script anterior, cargando las anims combinadas)
+local ANIMS = { BOOST_CYAN = 90872539 }
 local animTracks = {}
-
 local function createAnimation(id)
 	local a = Instance.new("Animation")
 	a.AnimationId = "rbxassetid://"..tostring(id)
 	return a
 end
-
 local function safeLoad(hum, id)
 	local ok, track = pcall(function() return hum:LoadAnimation(createAnimation(id)) end)
-	if ok and track then
-		track.Looped = true
-		return track
-	end
+	if ok and track then track.Looped = true; return track end
 	return nil
 end
 
 local function loadAnimationsToHumanoid(hum)
 	for _, track in pairs(animTracks) do pcall(function() track:Stop() end) end
 	animTracks = {}
-
-	-- Idle (flyIDLE): 73033633 + 21633130 (Action3 blend)
 	animTracks.idle_a = safeLoad(hum, 73033633)
 	animTracks.idle_b = safeLoad(hum, 21633130)
-
-	-- Forward (FLY W): 165167557 + 97172005
 	animTracks.forward_a = safeLoad(hum, 165167557)
 	animTracks.forward_b = safeLoad(hum, 97172005)
-
-	-- Side/Back/Right (Fly S): 27753183 + 21633130
 	animTracks.side_a = safeLoad(hum, 27753183)
 	animTracks.side_b = safeLoad(hum, 21633130)
 	animTracks.backward_a = animTracks.side_a
 	animTracks.backward_b = animTracks.side_b
-
-	-- Boost cyan (keep original cyan)
 	animTracks.boost_cyan = safeLoad(hum, ANIMS.BOOST_CYAN)
-
-	-- Boost yellow (fly Boost 2): torso + arms (129423131 + 56153856)
 	animTracks.boost_yellow_torso = safeLoad(hum, 129423131)
 	animTracks.boost_yellow_arms = safeLoad(hum, 56153856)
-
-	-- Boost red (fly Boost 3): priority + secondary (148831127 + 193342492)
 	animTracks.boost_red_prio = safeLoad(hum, 148831127)
 	animTracks.boost_red_sec = safeLoad(hum, 193342492)
 end
@@ -231,14 +234,12 @@ local function playMovementTrack(state)
 	if currentMovementState == state then return end
 	stopAllMovementTracks()
 	currentMovementState = state
-
 	if state == "idle" then
 		local a = animTracks.idle_a
 		local b = animTracks.idle_b
 		if a then a:Play(); pcall(function() a.TimePosition = 0; a:AdjustSpeed(0); a.Priority = Enum.AnimationPriority.Action3 end) end
 		if b then b:Play(); pcall(function() b.TimePosition = 0; b:AdjustSpeed(0); b.Priority = Enum.AnimationPriority.Action3 end) end
 	else
-		-- forward, backward, side all use two-track blend
 		if state == "forward" then
 			local a,b = animTracks.forward_a, animTracks.forward_b
 			if a then a:Play(); pcall(function() a.TimePosition = 0; a:AdjustSpeed(0); a.Priority = Enum.AnimationPriority.Action3 end) end
@@ -283,17 +284,12 @@ local function playBoostTrack(level)
 		if t then t.Priority = Enum.AnimationPriority.Action; t:Play(); pcall(function() t:AdjustSpeed(1) end) end
 
 	elseif level == 2 then
-		-- Boost amarillo (fly Boost 2): torso rápido -> freeze near end -> mostrar brazos congelados
 		local torso = animTracks.boost_yellow_torso
 		local arms = animTracks.boost_yellow_arms
 		if torso then
 			pcall(function() torso.Priority = Enum.AnimationPriority.Action end)
 			coroutine.wrap(function()
-				pcall(function()
-					torso:Play()
-					torso:AdjustSpeed(100)
-				end)
-				-- calcular tiempo aproximado para congelar
+				pcall(function() torso:Play(); torso:AdjustSpeed(100) end)
 				local ok, length = pcall(function() return torso.Length end)
 				local adjusted = 0.02
 				if ok and type(length) == "number" and length > 0 then
@@ -302,7 +298,6 @@ local function playBoostTrack(level)
 				end
 				wait(adjusted)
 				pcall(function() torso:AdjustSpeed(0) end)
-				-- mostrar brazos congelados
 				if arms then
 					pcall(function()
 						arms.Priority = Enum.AnimationPriority.Action4
@@ -316,7 +311,6 @@ local function playBoostTrack(level)
 		end
 
 	elseif level == 3 then
-		-- Boost rojo (fly Boost 3): prioridad + secundaria ambas congeladas
 		local pr = animTracks.boost_red_prio
 		local sc = animTracks.boost_red_sec
 		if pr then pcall(function() pr.Priority = Enum.AnimationPriority.Action4; pr:Play(); pr:AdjustSpeed(0); pr.TimePosition = 0; pr:AdjustWeight(1) end) end
@@ -324,6 +318,7 @@ local function playBoostTrack(level)
 	end
 end
 
+-- Input helpers
 local function camBasisFull() local cam = camera.CFrame return cam.LookVector, cam.RightVector end
 
 local function getMobileAxes()
@@ -353,6 +348,7 @@ local function isPlayerMoving()
 	return false
 end
 
+-- Botones
 impulsoBtn.MouseButton1Click:Connect(function()
 	safeBounce(impulsoBtn)
 	if not flying then return end
@@ -366,10 +362,9 @@ end)
 flyBtn.MouseButton1Click:Connect(function()
 	safeBounce(flyBtn)
 	if flying then
+		-- Deactivate: remover movers en lugar de solo setear fuerzas
 		flying = false
-		bodyVel.MaxForce = Vector3.new(0,0,0)
-		bodyVel.Velocity = Vector3.new(0,0,0)
-		bodyGyro.MaxTorque = Vector3.new(0,0,0)
+		removeBodyMovers()
 		humanoid.PlatformStand = false
 		stopAllBoostTracks(); stopAllMovementTracks()
 		currentMovementState = nil; currentBoostState = 0; boostLevel = 0
@@ -378,12 +373,12 @@ flyBtn.MouseButton1Click:Connect(function()
 		tween(flyBtn,{BackgroundColor3 = FLY_INACTIVE_COLOR},0.12)
 		setBoostIndicatorByLevel(0)
 	else
+		-- Activate: crear movers aquí
 		flying = true
 		levBaseY = hrp.Position.Y
 		tAccum = 0
 		wasMoving = isPlayerMoving()
-		bodyVel.MaxForce = Vector3.new(1e5, 1e8, 1e5)
-		bodyGyro.MaxTorque = Vector3.new(4e6,4e6,4e6)
+		createBodyMovers()
 		humanoid.PlatformStand = true
 		if not next(animTracks) then loadAnimationsToHumanoid(humanoid) end
 		playMovementTrack("idle")
@@ -394,11 +389,11 @@ flyBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- Death / respawn handling
 humanoid.Died:Connect(function()
 	if flying then
 		flying = false
-		bodyVel.MaxForce = Vector3.new(0,0,0); bodyVel.Velocity = Vector3.new(0,0,0)
-		bodyGyro.MaxTorque = Vector3.new(0,0,0)
+		removeBodyMovers()
 		humanoid.PlatformStand = false
 		stopAllBoostTracks(); stopAllMovementTracks()
 		currentMovementState = nil; currentBoostState = 0; boostLevel = 0
@@ -410,15 +405,15 @@ humanoid.Died:Connect(function()
 end)
 
 player.CharacterAdded:Connect(function(char)
+	-- reasignar referencias y limpiar movers para evitar duplicates
 	character = char
 	humanoid = character:WaitForChild("Humanoid")
 	hrp = character:WaitForChild("HumanoidRootPart")
-	bodyVel.Parent = hrp
-	bodyGyro.Parent = hrp
+	-- aseguramos que no queden movers colgando
+	removeBodyMovers()
 	gui.Parent = player:WaitForChild("PlayerGui")
+	-- reset estado
 	flying = false
-	bodyVel.MaxForce = Vector3.new(0,0,0); bodyVel.Velocity = Vector3.new(0,0,0)
-	bodyGyro.MaxTorque = Vector3.new(0,0,0)
 	humanoid.PlatformStand = false
 	stopAllBoostTracks(); stopAllMovementTracks()
 	animTracks = {}
@@ -430,6 +425,7 @@ player.CharacterAdded:Connect(function(char)
 	setBoostIndicatorByLevel(0)
 end)
 
+-- Main loop
 RunService.RenderStepped:Connect(function(dt)
 	tAccum = tAccum + dt
 	currentSpeed = currentSpeed + (targetSpeed - currentSpeed) * math.clamp(dt * SPEED_LERP, 0, 1)
@@ -448,13 +444,15 @@ RunService.RenderStepped:Connect(function(dt)
 	wasMoving = movingNow
 
 	if not flying then
+		-- Si no está volando, nos aseguramos de que no haya forces activas
 		currentCamRoll = currentCamRoll + (0 - currentCamRoll) * math.clamp(dt * 8, 0, 1)
 		local camPos = camera.CFrame.Position
 		local camLookVec = camera.CFrame.LookVector
 		local desiredCamCFrame = CFrame.lookAt(camPos, camPos + camLookVec, Vector3.new(0,1,0)) * CFrame.Angles(0,0,currentCamRoll)
 		camera.CFrame = camera.CFrame:Lerp(desiredCamCFrame, math.clamp(dt * 8, 0, 1))
-		bodyVel.MaxForce = Vector3.new(0,0,0); bodyVel.Velocity = Vector3.new(0,0,0)
-		bodyGyro.MaxTorque = Vector3.new(0,0,0)
+		-- Deja fuerzas inactivas o destruidas
+		if bodyVel then bodyVel.MaxForce = Vector3.new(0,0,0); bodyVel.Velocity = Vector3.new(0,0,0) end
+		if bodyGyro then bodyGyro.MaxTorque = Vector3.new(0,0,0) end
 		return
 	end
 
@@ -470,7 +468,7 @@ RunService.RenderStepped:Connect(function(dt)
 
 	if inputMag < INPUT_DEADZONE then
 		local targetVel = Vector3.new(0, levVel, 0)
-		bodyVel.Velocity = bodyVel.Velocity:Lerp(targetVel, math.clamp(dt * (VEL_LERP*1.3), 0, 1))
+		if bodyVel then bodyVel.Velocity = bodyVel.Velocity:Lerp(targetVel, math.clamp(dt * (VEL_LERP*1.3), 0, 1)) end
 	else
 		local camLook, camRight = camBasisFull()
 		local dir = camLook * fwdAxis + camRight * rightAxis
@@ -479,7 +477,7 @@ RunService.RenderStepped:Connect(function(dt)
 			local scale = math.min(1, inputMag)
 			local moveVel = dir * currentSpeed * scale
 			local targetVel = Vector3.new(moveVel.X, moveVel.Y + levVel, moveVel.Z)
-			bodyVel.Velocity = bodyVel.Velocity:Lerp(targetVel, math.clamp(dt * VEL_LERP, 0, 1))
+			if bodyVel then bodyVel.Velocity = bodyVel.Velocity:Lerp(targetVel, math.clamp(dt * VEL_LERP, 0, 1)) end
 		end
 	end
 
@@ -507,8 +505,11 @@ RunService.RenderStepped:Connect(function(dt)
 
 	local tiltCFrame = CFrame.Angles(math.rad(finalTiltForward), 0, math.rad(finalTiltSide))
 	local desiredBodyCFrame = desiredCFrameBase * tiltCFrame
-	bodyGyro.CFrame = bodyGyro.CFrame:Lerp(desiredBodyCFrame, math.clamp(dt * ROT_LERP, 0, 1))
-	bodyGyro.P = 3000; bodyGyro.D = 200
+	-- Aplicar gyro solo si existe
+	if bodyGyro then
+		bodyGyro.CFrame = bodyGyro.CFrame:Lerp(desiredBodyCFrame, math.clamp(dt * ROT_LERP, 0, 1))
+		bodyGyro.P = 3000; bodyGyro.D = 200
+	end
 
 	local targetCamRoll = math.rad(finalTiltSide) * CAMERA_ROLL_INFLUENCE
 	currentCamRoll = currentCamRoll + (targetCamRoll - currentCamRoll) * math.clamp(dt * 8, 0, 1)
@@ -544,4 +545,4 @@ impulsoBtn.Text = "IMPULSO"
 tween(flyBtn,{BackgroundColor3 = FLY_INACTIVE_COLOR},0.1)
 setBoostIndicatorByLevel(0)
 
-print("[Flight v6.4 - adaptado] Animaciones reasignadas: Boost2->amarillo, Boost3->rojo, flyIDLE->idle, FLY W->forward, Fly S->side/back/right")
+print("[Flight v6.4 - adaptado] BodyMovers creados solo en ON / destruidos en OFF. Animaciones reasignadas.")
