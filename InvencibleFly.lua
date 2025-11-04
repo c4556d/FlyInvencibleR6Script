@@ -1,4 +1,4 @@
--- Flight v6.4 - Adaptado: BodyMovers creados solo en ON / destruidos en OFF
+-- Flight v6.4 - Final (body movers creados/destruidos; idle y boost2 reemplazados)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -10,7 +10,7 @@ local humanoid = character:WaitForChild("Humanoid")
 local hrp = character:WaitForChild("HumanoidRootPart")
 local camera = workspace.CurrentCamera
 
--- CONFIG (igual que antes)
+-- CONFIG
 local BASE_SPEED = 39.93
 local BOOST_SPEEDS = {79.87, 199.66, 319.46}
 local FOV_BASE = camera.FieldOfView
@@ -53,7 +53,7 @@ local wasMoving = false
 local bodyVel = nil
 local bodyGyro = nil
 
--- UI (idéntica a la anterior, resumida aquí)
+-- UI (idéntico, resumido)
 local gui = Instance.new("ScreenGui")
 gui.Name = "FlightUI_v6_final_match"
 gui.ResetOnSpawn = false
@@ -68,94 +68,54 @@ container.AnchorPoint = Vector2.new(1, 0.5)
 container.BackgroundTransparency = 1
 
 local backgroundBox = Instance.new("Frame", container)
-backgroundBox.Name = "BackgroundBox"
-backgroundBox.Size = UDim2.new(0, 205, 0, 150)
-backgroundBox.Position = UDim2.new(0, 0, 0, 0)
-backgroundBox.AnchorPoint = Vector2.new(0, 0)
-backgroundBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+backgroundBox.Size = UDim2.new(0,205,0,150)
+backgroundBox.BackgroundColor3 = Color3.fromRGB(0,0,0)
 backgroundBox.BackgroundTransparency = 0.7
 backgroundBox.BorderSizePixel = 0
-backgroundBox.ZIndex = 1
-local bgCorner = Instance.new("UICorner", backgroundBox)
-bgCorner.CornerRadius = UDim.new(0, 12)
+local bgCorner = Instance.new("UICorner", backgroundBox); bgCorner.CornerRadius = UDim.new(0,12)
 local bgGradient = Instance.new("UIGradient", backgroundBox)
 bgGradient.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(1, 0.4)})
-bgGradient.Rotation = 0
 
 local function makeCapsuleButton(name, text, color, posY, width, height)
 	local b = Instance.new("TextButton")
-	b.Name = name
-	b.Size = UDim2.new(0, width, 0, height)
-	b.Position = UDim2.new(0, 0, 0, posY)
-	b.BackgroundColor3 = color
-	b.BackgroundTransparency = TRANSPARENCY
-	b.Text = text
-	b.TextColor3 = Color3.new(1,1,1)
-	b.Font = Enum.Font.SourceSansBold
-	b.TextSize = 32
-	b.AutoButtonColor = false
-	b.AnchorPoint = Vector2.new(0,0)
-	b.BorderSizePixel = 0
-	b.ZIndex = 2
-	b.TextStrokeTransparency = 0
-	b.TextStrokeColor3 = Color3.new(0,0,0)
-	local corner = Instance.new("UICorner", b)
-	corner.CornerRadius = UDim.new(0.5, 0)
+	b.Name = name; b.Size = UDim2.new(0, width, 0, height); b.Position = UDim2.new(0, 0, 0, posY)
+	b.BackgroundColor3 = color; b.BackgroundTransparency = TRANSPARENCY
+	b.Text = text; b.TextColor3 = Color3.new(1,1,1); b.Font = Enum.Font.SourceSansBold; b.TextSize = 32
+	b.AutoButtonColor = false; b.BorderSizePixel = 0; b.ZIndex = 2
+	local corner = Instance.new("UICorner", b); corner.CornerRadius = UDim.new(0.5, 0)
 	b.Parent = container
 	return b
 end
 
-local IMPULSO_WIDTH = 205
-local IMPULSO_HEIGHT = 75
-local FLY_WIDTH = 205
-local FLY_HEIGHT = 75
-
+local IMPULSO_WIDTH, IMPULSO_HEIGHT = 205, 75
+local FLY_WIDTH, FLY_HEIGHT = 205, 75
 local impulsoBtn = makeCapsuleButton("ImpulsoBtn", "IMPULSO", BOOST_BASE_COLOR, 0, IMPULSO_WIDTH, IMPULSO_HEIGHT)
 local flyBtn = makeCapsuleButton("FlyBtn", "Fly OFF", FLY_INACTIVE_COLOR, 75, FLY_WIDTH, FLY_HEIGHT)
 
 local boostIndicator = Instance.new("Frame", container)
 boostIndicator.Name = "BoostIndicator"
-boostIndicator.Size = UDim2.new(0, 52, 0, 32)
+boostIndicator.Size = UDim2.new(0,52,0,32)
 boostIndicator.Position = UDim2.new(0, -26, 0, 59)
-boostIndicator.AnchorPoint = Vector2.new(0, 0)
 boostIndicator.BackgroundColor3 = Color3.fromRGB(255,255,255)
 boostIndicator.BackgroundTransparency = 0.25
-boostIndicator.BorderSizePixel = 0
-boostIndicator.ZIndex = 3
-local indCorner = Instance.new("UICorner", boostIndicator)
-indCorner.CornerRadius = UDim.new(0.5, 0)
+local indCorner = Instance.new("UICorner", boostIndicator); indCorner.CornerRadius = UDim.new(0.5,0)
 
 local activeTweens = {}
 local function safeBounce(btn)
 	local scale = btn:FindFirstChild("UIButtonScale")
-	if not scale then
-		scale = Instance.new("UIScale")
-		scale.Name = "UIButtonScale"
-		scale.Scale = 1
-		scale.Parent = btn
-	end
-	if activeTweens[btn] then
-		pcall(function() activeTweens[btn]:Cancel() end)
-		activeTweens[btn] = nil
-	end
+	if not scale then scale = Instance.new("UIScale"); scale.Name = "UIButtonScale"; scale.Scale = 1; scale.Parent = btn end
+	if activeTweens[btn] then pcall(function() activeTweens[btn]:Cancel() end); activeTweens[btn] = nil end
 	local upTween = TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Scale = 1.08})
 	local downTween = TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Scale = 1})
-	activeTweens[btn] = upTween
-	upTween:Play()
-	upTween.Completed:Connect(function()
-		activeTweens[btn] = downTween
-		downTween:Play()
-		downTween.Completed:Connect(function() activeTweens[btn] = nil end)
-	end)
+	activeTweens[btn] = upTween; upTween:Play()
+	upTween.Completed:Connect(function() activeTweens[btn] = downTween; downTween:Play(); downTween.Completed:Connect(function() activeTweens[btn] = nil end) end)
 end
 
-local function tween(obj, props, t) t = t or 0.28 TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), props):Play() end
+local function tween(obj, props, t) t = t or 0.28; TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), props):Play() end
 
 -- Body movers management
 local function createBodyMovers()
-	-- Si ya existen, aseguramos que están parented
-	if bodyVel and bodyVel.Parent and bodyVel.Parent == hrp then return end
-	-- destroy prev (por seguridad)
+	if bodyVel and bodyVel.Parent == hrp then return end
 	if bodyVel then pcall(function() bodyVel:Destroy() end) bodyVel = nil end
 	if bodyGyro then pcall(function() bodyGyro:Destroy() end) bodyGyro = nil end
 
@@ -172,19 +132,14 @@ local function createBodyMovers()
 end
 
 local function removeBodyMovers()
-	if bodyVel then
-		pcall(function() bodyVel:Destroy() end)
-		bodyVel = nil
-	end
-	if bodyGyro then
-		pcall(function() bodyGyro:Destroy() end)
-		bodyGyro = nil
-	end
+	if bodyVel then pcall(function() bodyVel:Destroy() end) bodyVel = nil end
+	if bodyGyro then pcall(function() bodyGyro:Destroy() end) bodyGyro = nil end
 end
 
--- Anim handling (igual que en el script anterior, cargando las anims combinadas)
+-- Anim handling
 local ANIMS = { BOOST_CYAN = 90872539 }
 local animTracks = {}
+
 local function createAnimation(id)
 	local a = Instance.new("Animation")
 	a.AnimationId = "rbxassetid://"..tostring(id)
@@ -196,20 +151,46 @@ local function safeLoad(hum, id)
 	return nil
 end
 
+-- variable para watchdog / loop del Boost amarillo
+local yellowSpeedConn = nil
+local yellowFreezeTask = nil
+
+local function clearYellowHandlers()
+	if yellowSpeedConn then
+		pcall(function() yellowSpeedConn:Disconnect() end)
+		yellowSpeedConn = nil
+	end
+	if yellowFreezeTask and type(yellowFreezeTask) == "thread" then
+		-- nothing to explicitly stop for coroutine but nil it
+		yellowFreezeTask = nil
+	end
+end
+
 local function loadAnimationsToHumanoid(hum)
 	for _, track in pairs(animTracks) do pcall(function() track:Stop() end) end
 	animTracks = {}
-	animTracks.idle_a = safeLoad(hum, 73033633)
-	animTracks.idle_b = safeLoad(hum, 21633130)
+
+	-- IDLE: REEMPLAZADO por lo que mandaste: prioridad alta 203929876 + secundaria 97172005
+	animTracks.idle_a = safeLoad(hum, 203929876) -- Action4
+	animTracks.idle_b = safeLoad(hum, 97172005)  -- Action3
+
+	-- Forward (FLY W)
 	animTracks.forward_a = safeLoad(hum, 165167557)
 	animTracks.forward_b = safeLoad(hum, 97172005)
+
+	-- Side/Back/Right (Fly S)
 	animTracks.side_a = safeLoad(hum, 27753183)
 	animTracks.side_b = safeLoad(hum, 21633130)
 	animTracks.backward_a = animTracks.side_a
 	animTracks.backward_b = animTracks.side_b
+
+	-- Boost cyan (original)
 	animTracks.boost_cyan = safeLoad(hum, ANIMS.BOOST_CYAN)
-	animTracks.boost_yellow_torso = safeLoad(hum, 129423131)
-	animTracks.boost_yellow_arms = safeLoad(hum, 56153856)
+
+	-- Boost amarillo (ahora única anim 93693205, velocidad persistente 33x)
+	animTracks.boost_yellow = safeLoad(hum, 93693205)
+
+	-- Boost rojo (dos anims)
 	animTracks.boost_red_prio = safeLoad(hum, 148831127)
 	animTracks.boost_red_sec = safeLoad(hum, 193342492)
 end
@@ -221,10 +202,13 @@ local function stopAllMovementTracks()
 	end
 end
 local function stopAllBoostTracks()
-	for _,v in ipairs({"boost_cyan","boost_yellow_torso","boost_yellow_arms","boost_red_prio","boost_red_sec"}) do
+	-- limpiar handlers del boost amarillo antes de parar anims
+	clearYellowHandlers()
+	for _,v in ipairs({"boost_cyan","boost_yellow","boost_red_prio","boost_red_sec"}) do
 		local t = animTracks[v]
 		if t and t.IsPlaying then pcall(function() t:Stop() end) end
 	end
+	currentBoostState = 0
 end
 
 local currentMovementState = nil
@@ -237,8 +221,8 @@ local function playMovementTrack(state)
 	if state == "idle" then
 		local a = animTracks.idle_a
 		local b = animTracks.idle_b
-		if a then a:Play(); pcall(function() a.TimePosition = 0; a:AdjustSpeed(0); a.Priority = Enum.AnimationPriority.Action3 end) end
-		if b then b:Play(); pcall(function() b.TimePosition = 0; b:AdjustSpeed(0); b.Priority = Enum.AnimationPriority.Action3 end) end
+		if a then a:Play(); pcall(function() a.TimePosition = 0; a:AdjustSpeed(0); a.Priority = Enum.AnimationPriority.Action4; a:AdjustWeight(1) end) end
+		if b then b:Play(); pcall(function() b.TimePosition = 0; b:AdjustSpeed(0); b.Priority = Enum.AnimationPriority.Action3; b:AdjustWeight(1) end) end
 	else
 		if state == "forward" then
 			local a,b = animTracks.forward_a, animTracks.forward_b
@@ -258,18 +242,51 @@ end
 
 local function setBoostIndicatorByLevel(level)
 	if level == 0 then
-		TweenService:Create(boostIndicator, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255,255,255)}):Play()
-		TweenService:Create(boostIndicator, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Size = UDim2.new(0,52,0,32)}):Play()
+		TweenService:Create(boostIndicator, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(255,255,255), Size = UDim2.new(0,52,0,32)}):Play()
 	elseif level == 1 then
-		TweenService:Create(boostIndicator, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(173,216,230)}):Play()
-		TweenService:Create(boostIndicator, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Size = UDim2.new(0,62,0,32)}):Play()
+		TweenService:Create(boostIndicator, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(173,216,230), Size = UDim2.new(0,62,0,32)}):Play()
 	elseif level == 2 then
-		TweenService:Create(boostIndicator, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(255,204,0)}):Play()
-		TweenService:Create(boostIndicator, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Size = UDim2.new(0,70,0,32)}):Play()
+		TweenService:Create(boostIndicator, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(255,204,0), Size = UDim2.new(0,70,0,32)}):Play()
 	elseif level == 3 then
-		TweenService:Create(boostIndicator, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {BackgroundColor3 = Color3.fromRGB(220,20,60)}):Play()
-		TweenService:Create(boostIndicator, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Size = UDim2.new(0,78,0,32)}):Play()
+		TweenService:Create(boostIndicator, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(220,20,60), Size = UDim2.new(0,78,0,32)}):Play()
 	end
+end
+
+-- Boost amarillo: control de velocidad persistente y congelado
+local function startYellowRoutine(track)
+	if not track then return end
+	-- cleanup previo
+	clearYellowHandlers()
+	local CONSTANT_SPEED = 33
+	local freezeScheduled = false
+
+	-- Forzamos velocidad y monitor (Heartbeat)
+	yellowSpeedConn = RunService.Heartbeat:Connect(function()
+		if track and track.IsPlaying and not freezeScheduled then
+			if track.Speed ~= CONSTANT_SPEED then
+				pcall(function() track:AdjustSpeed(CONSTANT_SPEED) end)
+			end
+		end
+	end)
+
+	-- reproducir a velocidad constante
+	pcall(function() track:Play(); track:AdjustSpeed(CONSTANT_SPEED); track.Priority = Enum.AnimationPriority.Action end)
+
+	-- calcular tiempo y programar congelado en coroutine
+	yellowFreezeTask = coroutine.create(function()
+		local ok, length = pcall(function() return track.Length end)
+		local animLength = (ok and type(length) == "number" and length > 0) and length or 0
+		local freezePoint = math.max(0, animLength - 0.05)
+		local adjusted = (animLength > 0) and (freezePoint / CONSTANT_SPEED) or 0.02
+		wait(adjusted)
+		freezeScheduled = true
+		-- desconectar watchdog
+		clearYellowHandlers()
+		-- congelar
+		pcall(function() track:AdjustSpeed(0); track:AdjustWeight(1) end)
+	end)
+	-- lanzar coroutine
+	coroutine.resume(yellowFreezeTask)
 end
 
 local function playBoostTrack(level)
@@ -281,34 +298,12 @@ local function playBoostTrack(level)
 
 	if level == 1 then
 		local t = animTracks.boost_cyan
-		if t then t.Priority = Enum.AnimationPriority.Action; t:Play(); pcall(function() t:AdjustSpeed(1) end) end
+		if t then pcall(function() t.Priority = Enum.AnimationPriority.Action; t:Play(); t:AdjustSpeed(1) end) end
 
 	elseif level == 2 then
-		local torso = animTracks.boost_yellow_torso
-		local arms = animTracks.boost_yellow_arms
-		if torso then
-			pcall(function() torso.Priority = Enum.AnimationPriority.Action end)
-			coroutine.wrap(function()
-				pcall(function() torso:Play(); torso:AdjustSpeed(100) end)
-				local ok, length = pcall(function() return torso.Length end)
-				local adjusted = 0.02
-				if ok and type(length) == "number" and length > 0 then
-					local freezeTime = math.max(0, length - 0.05)
-					adjusted = freezeTime / 100
-				end
-				wait(adjusted)
-				pcall(function() torso:AdjustSpeed(0) end)
-				if arms then
-					pcall(function()
-						arms.Priority = Enum.AnimationPriority.Action4
-						arms:Play()
-						arms.TimePosition = 0
-						arms:AdjustSpeed(0)
-						arms:AdjustWeight(1, 0.1)
-					end)
-				end
-			end)()
-		end
+		-- Boost amarillo: anim única 93693205 con watchdog + freeze final
+		local t = animTracks.boost_yellow
+		if t then startYellowRoutine(t) end
 
 	elseif level == 3 then
 		local pr = animTracks.boost_red_prio
@@ -362,7 +357,7 @@ end)
 flyBtn.MouseButton1Click:Connect(function()
 	safeBounce(flyBtn)
 	if flying then
-		-- Deactivate: remover movers en lugar de solo setear fuerzas
+		-- Deactivate
 		flying = false
 		removeBodyMovers()
 		humanoid.PlatformStand = false
@@ -373,7 +368,7 @@ flyBtn.MouseButton1Click:Connect(function()
 		tween(flyBtn,{BackgroundColor3 = FLY_INACTIVE_COLOR},0.12)
 		setBoostIndicatorByLevel(0)
 	else
-		-- Activate: crear movers aquí
+		-- Activate
 		flying = true
 		levBaseY = hrp.Position.Y
 		tAccum = 0
@@ -405,14 +400,11 @@ humanoid.Died:Connect(function()
 end)
 
 player.CharacterAdded:Connect(function(char)
-	-- reasignar referencias y limpiar movers para evitar duplicates
 	character = char
 	humanoid = character:WaitForChild("Humanoid")
 	hrp = character:WaitForChild("HumanoidRootPart")
-	-- aseguramos que no queden movers colgando
 	removeBodyMovers()
 	gui.Parent = player:WaitForChild("PlayerGui")
-	-- reset estado
 	flying = false
 	humanoid.PlatformStand = false
 	stopAllBoostTracks(); stopAllMovementTracks()
@@ -444,13 +436,11 @@ RunService.RenderStepped:Connect(function(dt)
 	wasMoving = movingNow
 
 	if not flying then
-		-- Si no está volando, nos aseguramos de que no haya forces activas
 		currentCamRoll = currentCamRoll + (0 - currentCamRoll) * math.clamp(dt * 8, 0, 1)
 		local camPos = camera.CFrame.Position
 		local camLookVec = camera.CFrame.LookVector
 		local desiredCamCFrame = CFrame.lookAt(camPos, camPos + camLookVec, Vector3.new(0,1,0)) * CFrame.Angles(0,0,currentCamRoll)
 		camera.CFrame = camera.CFrame:Lerp(desiredCamCFrame, math.clamp(dt * 8, 0, 1))
-		-- Deja fuerzas inactivas o destruidas
 		if bodyVel then bodyVel.MaxForce = Vector3.new(0,0,0); bodyVel.Velocity = Vector3.new(0,0,0) end
 		if bodyGyro then bodyGyro.MaxTorque = Vector3.new(0,0,0) end
 		return
@@ -505,11 +495,7 @@ RunService.RenderStepped:Connect(function(dt)
 
 	local tiltCFrame = CFrame.Angles(math.rad(finalTiltForward), 0, math.rad(finalTiltSide))
 	local desiredBodyCFrame = desiredCFrameBase * tiltCFrame
-	-- Aplicar gyro solo si existe
-	if bodyGyro then
-		bodyGyro.CFrame = bodyGyro.CFrame:Lerp(desiredBodyCFrame, math.clamp(dt * ROT_LERP, 0, 1))
-		bodyGyro.P = 3000; bodyGyro.D = 200
-	end
+	if bodyGyro then bodyGyro.CFrame = bodyGyro.CFrame:Lerp(desiredBodyCFrame, math.clamp(dt * ROT_LERP, 0, 1)); bodyGyro.P = 3000; bodyGyro.D = 200 end
 
 	local targetCamRoll = math.rad(finalTiltSide) * CAMERA_ROLL_INFLUENCE
 	currentCamRoll = currentCamRoll + (targetCamRoll - currentCamRoll) * math.clamp(dt * 8, 0, 1)
@@ -545,4 +531,4 @@ impulsoBtn.Text = "IMPULSO"
 tween(flyBtn,{BackgroundColor3 = FLY_INACTIVE_COLOR},0.1)
 setBoostIndicatorByLevel(0)
 
-print("[Flight v6.4 - adaptado] BodyMovers creados solo en ON / destruidos en OFF. Animaciones reasignadas.")
+print("[Flight v6.4 - final] Idle y Boost2 reemplazados; BodyMovers creados solo en ON.")
