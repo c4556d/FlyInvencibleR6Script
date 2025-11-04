@@ -1,4 +1,4 @@
--- Flight v6.4 - Final completo (refreshAnims ejecutado 1 vez al inicio)
+-- Flight v6.4 - Final completo (BoostRed sin lockFeet + forward_extra 161235826 + Idle REVERSE 4-anims)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -181,9 +181,7 @@ local function removeBodyMovers()
 end
 
 -- Anim handling
-local ANIMS = {
-	BOOST_CYAN = 90872539
-}
+local ANIMS = { BOOST_CYAN = 90872539 }
 local animTracks = {}
 
 local function createAnimation(id)
@@ -394,36 +392,6 @@ local function stopAllBoostTracks()
 	-- liberar pies por si estaban bloqueados
 	pcall(unlockFeet)
 	currentBoostState = 0
-end
-
--- ==== REFRESH ANIMS (SE EJECUTA 1 VEZ AL INICIO) ====
-local function refreshAnims()
-	-- parar cualquier cosa (si existe)
-	pcall(stopAllBoostTracks)
-	pcall(stopAllMovementTracks)
-
-	-- resetear tabla y recargar
-	animTracks = {}
-	loadAnimationsToHumanoid(humanoid)
-
-	-- asegurar que la animación main (74909537) quede pausada EN EL FINAL
-	local main = animTracks.idle_main
-	if main then
-		pcall(function()
-			main.Looped = false
-			main.Priority = Enum.AnimationPriority.Action3
-			-- play+pause breve para asegurarnos que Length esté disponible
-			main:Play()
-			main:AdjustSpeed(0)
-			local ok, length = pcall(function() return main.Length end)
-			if ok and type(length) == "number" and length > 0 then
-				main.TimePosition = length
-			end
-			main:AdjustSpeed(0)
-			main:AdjustWeight(1)
-			-- la dejamos pausada (no la detenemos para evitar que el motor la descarte)
-		end)
-	end
 end
 
 local currentMovementState = nil
@@ -711,7 +679,7 @@ player.CharacterAdded:Connect(function(char)
 	humanoid.PlatformStand = false
 	stopAllBoostTracks(); stopAllMovementTracks()
 	animTracks = {}
-	loadAnimationsToHumanoid(humanoid) -- NO refrescamos aquí: refreshAnims() SOLO corre 1 vez al inicio
+	loadAnimationsToHumanoid(humanoid)
 	currentMovementState = nil; currentBoostState = 0; boostLevel = 0
 	targetSpeed = BASE_SPEED; targetFOV = FOV_BASE
 	flyBtn.Text = "Fly OFF"
@@ -830,13 +798,50 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 end)
 
--- Inicial: cargamos anims y ejecutamos refresh SOLO UNA VEZ
+-- Inicial
 loadAnimationsToHumanoid(humanoid)
-refreshAnims() -- <--- ejecuta la "recarga" inicial para evitar que 74909537 salte al principio
-
 flyBtn.Text = "Fly OFF"
 impulsoBtn.Text = "IMPULSO"
 tween(flyBtn,{BackgroundColor3 = FLY_INACTIVE_COLOR},0.1)
 setBoostIndicatorByLevel(0)
 
-print("[Flight v6.4 - final completo] RefreshAnims ejecutado 1 vez; resto integrado.")
+print("[Flight v6.4 - final completo] BoostRed sin lockFeet + forward_extra (161235826) agregado + Idle REVERSE 4-anims.")
+
+-- RefreshAnims Script
+-- Coloca este script en StarterPlayer > StarterPlayerScripts
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+
+-- Función para refrescar todas las animaciones
+local function refreshAllAnimations()
+	-- Obtener el Animator del Humanoid
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	
+	if not animator then
+		warn("No se encontró Animator en el Humanoid")
+		return
+	end
+	
+	-- Detener todas las animaciones en reproducción
+	local playingTracks = animator:GetPlayingAnimationTracks()
+	
+	for _, track in pairs(playingTracks) do
+		track:Stop(0) -- Detener inmediatamente
+		track:Destroy()
+	end
+	
+	print("Todas las animaciones han sido refrescadas")
+end
+
+-- Ejecutar el refresco de animaciones instantáneamente
+refreshAllAnimations()
+
+-- Refrescar animaciones instantáneamente cada vez que el personaje reaparece
+player.CharacterAdded:Connect(function(newCharacter)
+	character = newCharacter
+	humanoid = character:WaitForChild("Humanoid")
+	refreshAllAnimations()
+end)
