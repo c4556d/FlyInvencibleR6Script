@@ -840,11 +840,11 @@ local function refreshConstantly(duration)
 end
 
 -- Ejecutar el refresco constante al inicio
-refreshConstantly(0.5)
+refreshConstantly(1.5)
 
 -- Refrescar animaciones constantemente cada vez que el personaje reaparece
 player.CharacterAdded:Connect(function(newCharacter)
 	character = newCharacter
 	humanoid = character:WaitForChild("Humanoid")
-	refreshConstantly(0.5)
+	refreshConstantly(1.5)
 end)
