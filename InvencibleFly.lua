@@ -815,33 +815,36 @@ local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 
--- Función para refrescar todas las animaciones
-local function refreshAllAnimations()
-	-- Obtener el Animator del Humanoid
-	local animator = humanoid:FindFirstChildOfClass("Animator")
+-- Función para refrescar constantemente durante un tiempo determinado
+local function refreshConstantly(duration)
+	local startTime = tick()
 	
-	if not animator then
-		warn("No se encontró Animator en el Humanoid")
-		return
+	while tick() - startTime < duration do
+		-- Obtener el Animator del Humanoid
+		local animator = humanoid:FindFirstChildOfClass("Animator")
+		
+		if animator then
+			-- Detener todas las animaciones en reproducción
+			local playingTracks = animator:GetPlayingAnimationTracks()
+			
+			for _, track in pairs(playingTracks) do
+				track:Stop(0) -- Detener inmediatamente
+				track:Destroy()
+			end
+		end
+		
+		task.wait() -- Esperar un frame antes de refrescar de nuevo
 	end
 	
-	-- Detener todas las animaciones en reproducción
-	local playingTracks = animator:GetPlayingAnimationTracks()
-	
-	for _, track in pairs(playingTracks) do
-		track:Stop(0) -- Detener inmediatamente
-		track:Destroy()
-	end
-	
-	print("Todas las animaciones han sido refrescadas")
+	print("Refresco de animaciones completado")
 end
 
--- Ejecutar el refresco de animaciones instantáneamente
-refreshAllAnimations()
+-- Ejecutar el refresco constante al inicio
+refreshConstantly(0.5)
 
--- Refrescar animaciones instantáneamente cada vez que el personaje reaparece
+-- Refrescar animaciones constantemente cada vez que el personaje reaparece
 player.CharacterAdded:Connect(function(newCharacter)
 	character = newCharacter
 	humanoid = character:WaitForChild("Humanoid")
-	refreshAllAnimations()
+	refreshConstantly(0.5)
 end)
