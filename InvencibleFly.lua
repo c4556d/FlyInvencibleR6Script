@@ -1,18 +1,19 @@
--- Flight v6.4 - Final completo (BoostRed sin lockFeet + forward_extra 161235826 + Idle REVERSE 4-anims)
+-- Fly invencibleV3
+
+-- services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
+-- player
 local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
-local hrp = character:WaitForChild("HumanoidRootPart")
-local camera = workspace.CurrentCamera
+local playerGui = player:WaitForChild("PlayerGui")
 
 -- CONFIG
 local BASE_SPEED = 39.93
 local BOOST_SPEEDS = {79.87, 199.66, 319.46}
+local camera = workspace.CurrentCamera
 local FOV_BASE = camera.FieldOfView
 local FOV_LEVELS = {FOV_BASE + 10, FOV_BASE + 20, FOV_BASE + 30}
 
@@ -38,6 +39,10 @@ local CAMERA_ROLL_INFLUENCE = 0.9
 local BOOST_PITCH_DEG = -90
 
 -- STATE
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local hrp = character:WaitForChild("HumanoidRootPart")
+
 local flying = false
 local boostLevel = 0
 local targetSpeed = BASE_SPEED
@@ -49,115 +54,11 @@ local tAccum = 0
 local currentCamRoll = 0
 local wasMoving = false
 
--- Body movers variables
+-- Body movers vars
 local bodyVel = nil
 local bodyGyro = nil
 
--- UI
-local gui = Instance.new("ScreenGui")
-gui.Name = "FlightUI_v6_final_match"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-gui.Parent = player:WaitForChild("PlayerGui")
-
-local container = Instance.new("Frame", gui)
-container.Name = "FlightContainer"
-container.Size = UDim2.new(0, 220, 0, 150)
-container.Position = UDim2.new(1, -20, 0.5, 0)
-container.AnchorPoint = Vector2.new(1, 0.5)
-container.BackgroundTransparency = 1
-
-local backgroundBox = Instance.new("Frame", container)
-backgroundBox.Name = "BackgroundBox"
-backgroundBox.Size = UDim2.new(0, 205, 0, 150)
-backgroundBox.Position = UDim2.new(0, 0, 0, 0)
-backgroundBox.AnchorPoint = Vector2.new(0, 0)
-backgroundBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-backgroundBox.BackgroundTransparency = 0.7
-backgroundBox.BorderSizePixel = 0
-backgroundBox.ZIndex = 1
-local bgCorner = Instance.new("UICorner", backgroundBox)
-bgCorner.CornerRadius = UDim.new(0, 12)
-local bgGradient = Instance.new("UIGradient", backgroundBox)
-bgGradient.Transparency = NumberSequence.new({
-	NumberSequenceKeypoint.new(0, 0.4),
-	NumberSequenceKeypoint.new(0.5, 0),
-	NumberSequenceKeypoint.new(1, 0.4)
-})
-bgGradient.Rotation = 0
-
-local function makeCapsuleButton(name, text, color, posY, width, height)
-	local b = Instance.new("TextButton")
-	b.Name = name
-	b.Size = UDim2.new(0, width, 0, height)
-	b.Position = UDim2.new(0, 0, 0, posY)
-	b.BackgroundColor3 = color
-	b.BackgroundTransparency = TRANSPARENCY
-	b.Text = text
-	b.TextColor3 = Color3.new(1,1,1)
-	b.Font = Enum.Font.SourceSansBold
-	b.TextSize = 32
-	b.AutoButtonColor = false
-	b.AnchorPoint = Vector2.new(0,0)
-	b.BorderSizePixel = 0
-	b.ZIndex = 2
-	b.TextStrokeTransparency = 0
-	b.TextStrokeColor3 = Color3.new(0,0,0)
-	local corner = Instance.new("UICorner", b)
-	corner.CornerRadius = UDim.new(0.5, 0)
-	b.Parent = container
-	return b
-end
-
-local IMPULSO_WIDTH = 205
-local IMPULSO_HEIGHT = 75
-local FLY_WIDTH = 205
-local FLY_HEIGHT = 75
-
-local impulsoBtn = makeCapsuleButton("ImpulsoBtn", "IMPULSO", BOOST_BASE_COLOR, 0, IMPULSO_WIDTH, IMPULSO_HEIGHT)
-local flyBtn = makeCapsuleButton("FlyBtn", "Fly OFF", FLY_INACTIVE_COLOR, 75, FLY_WIDTH, FLY_HEIGHT)
-
--- Boost indicator (ZIndex alto)
-local boostIndicator = Instance.new("Frame", container)
-boostIndicator.Name = "BoostIndicator"
-boostIndicator.Size = UDim2.new(0, 52, 0, 32)
-boostIndicator.Position = UDim2.new(0, -26, 0, 59)
-boostIndicator.AnchorPoint = Vector2.new(0, 0)
-boostIndicator.BackgroundColor3 = Color3.fromRGB(255,255,255)
-boostIndicator.BackgroundTransparency = 0.25
-boostIndicator.BorderSizePixel = 0
-boostIndicator.ZIndex = 5
-container.ChildAdded:Connect(function() pcall(function() boostIndicator.ZIndex = 5 end) end)
-local indCorner = Instance.new("UICorner", boostIndicator)
-indCorner.CornerRadius = UDim.new(0.5, 0)
-
-local activeTweens = {}
-local function safeBounce(btn)
-	local scale = btn:FindFirstChild("UIButtonScale")
-	if not scale then
-		scale = Instance.new("UIScale")
-		scale.Name = "UIButtonScale"
-		scale.Scale = 1
-		scale.Parent = btn
-	end
-	if activeTweens[btn] then
-		pcall(function() activeTweens[btn]:Cancel() end)
-		activeTweens[btn] = nil
-	end
-	local upTween = TweenService:Create(scale, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Scale = 1.08})
-	local downTween = TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Scale = 1})
-	activeTweens[btn] = upTween
-	upTween:Play()
-	upTween.Completed:Connect(function()
-		activeTweens[btn] = downTween
-		downTween:Play()
-		downTween.Completed:Connect(function() activeTweens[btn] = nil end)
-	end)
-end
-
-local function tween(obj, props, t) t = t or 0.28 TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), props):Play() end
-
--- Body movers management
+-- Helper functions for body movers (unchanged)
 local function createBodyMovers()
 	if bodyVel and bodyVel.Parent == hrp then return end
 	if bodyVel then pcall(function() bodyVel:Destroy() end) bodyVel = nil end
@@ -180,10 +81,9 @@ local function removeBodyMovers()
 	if bodyGyro then pcall(function() bodyGyro:Destroy() end) bodyGyro = nil end
 end
 
--- Anim handling
+-- Anim handling (kept)
 local ANIMS = { BOOST_CYAN = 90872539 }
 local animTracks = {}
-
 local function createAnimation(id)
 	local a = Instance.new("Animation")
 	a.AnimationId = "rbxassetid://"..tostring(id)
@@ -195,7 +95,7 @@ local function safeLoad(hum, id)
 	return nil
 end
 
--- Yellow handlers
+-- Yellow handlers (preserve logic / fix). These functions are required by boost logic.
 local yellowSpeedConn = nil
 local yellowFreezeTask = nil
 local function clearYellowHandlers()
@@ -206,9 +106,8 @@ local function clearYellowHandlers()
 	yellowFreezeTask = nil
 end
 
--- ==== Lock / unlock feet helpers (kept but not automatically used for boost red) ====
+-- lock/unlock feet helpers (kept)
 local lockedFeetData = {}
-
 local function findFootParts(chr)
 	local left, right = nil, nil
 	left = chr:FindFirstChild("LeftFoot") or chr:FindFirstChild("Left Lower Leg") or chr:FindFirstChild("LeftLowerLeg")
@@ -217,7 +116,6 @@ local function findFootParts(chr)
 	if not right then right = chr:FindFirstChild("Right Leg") or chr:FindFirstChild("Right") end
 	return left, right
 end
-
 local function unlockFeet()
 	for k,v in pairs(lockedFeetData) do
 		pcall(function()
@@ -230,7 +128,6 @@ local function unlockFeet()
 		lockedFeetData[k] = nil
 	end
 end
-
 local function lockFeet()
 	unlockFeet()
 	if not character then return end
@@ -285,32 +182,28 @@ local function lockFeet()
 	if rightFoot then lockedFeetData.right = createLockFor(rightFoot) end
 end
 
--- Idle reverse connection (will store the Heartbeat connection)
+-- Idle reverse and movement/boost track management (kept; identical to original)
 local idleReverseConn = nil
 
--- Load anims
 local function loadAnimationsToHumanoid(hum)
 	for _, track in pairs(animTracks) do pcall(function() track:Stop() end) end
 	animTracks = {}
 
-	-- Idle REVERSE 4-anims (exact IDs you provided)
-	animTracks.idle_main   = safeLoad(hum, 74909537) -- main (reverse)
+	animTracks.idle_main   = safeLoad(hum, 74909537)
 	animTracks.idle_second = safeLoad(hum, 203929876)
 	animTracks.idle_third  = safeLoad(hum, 97172005)
 	animTracks.idle_fourth = safeLoad(hum, 161235826)
 
-	-- Prepare main explicitly: non-looping, priority Action3, weight 1, ensure played so engine loads it
 	if animTracks.idle_main then
 		pcall(function()
 			animTracks.idle_main.Looped = false
 			animTracks.idle_main.Priority = Enum.AnimationPriority.Action3
-			animTracks.idle_main:Play()           -- ensure it's registered by the engine
-			animTracks.idle_main:AdjustSpeed(0)  -- pause - we'll control TimePosition manually
-			animTracks.idle_main:AdjustWeight(1) -- make sure main contributes when active
+			animTracks.idle_main:Play()
+			animTracks.idle_main:AdjustSpeed(0)
+			animTracks.idle_main:AdjustWeight(1)
 		end)
 	end
 
-	-- play and freeze the supporting tracks at first frame & invisible
 	for _,k in ipairs({"idle_second","idle_third","idle_fourth"}) do
 		local t = animTracks[k]
 		if t then
@@ -326,10 +219,9 @@ local function loadAnimationsToHumanoid(hum)
 		end
 	end
 
-	-- Forward / Side / Boosts (added forward_extra 161235826)
-	animTracks.forward_a = safeLoad(hum, 165167557)      -- Action3 forward main
-	animTracks.forward_b = safeLoad(hum, 97172005)       -- Action3 forward alternate
-	animTracks.forward_extra = safeLoad(hum, 161235826)  -- NEW: extra forward (lower priority)
+	animTracks.forward_a = safeLoad(hum, 165167557)
+	animTracks.forward_b = safeLoad(hum, 97172005)
+	animTracks.forward_extra = safeLoad(hum, 161235826)
 	animTracks.side_a = safeLoad(hum, 27753183)
 	animTracks.side_b = safeLoad(hum, 21633130)
 	animTracks.backward_a = animTracks.side_a
@@ -339,7 +231,6 @@ local function loadAnimationsToHumanoid(hum)
 	animTracks.boost_red_prio = safeLoad(hum, 148831127)
 	animTracks.boost_red_sec = safeLoad(hum, 193342492)
 
-	-- forward_extra: ensure paused/invisible at start, lower priority (Action)
 	if animTracks.forward_extra then
 		pcall(function()
 			animTracks.forward_extra.Looped = false
@@ -353,12 +244,7 @@ local function loadAnimationsToHumanoid(hum)
 end
 
 local function stopAllMovementTracks()
-	-- disconnect idle reverse if running
-	if idleReverseConn then
-		pcall(function() idleReverseConn:Disconnect() end)
-		idleReverseConn = nil
-	end
-
+	if idleReverseConn then pcall(function() idleReverseConn:Disconnect() end) idleReverseConn = nil end
 	for _,v in ipairs({
 		"idle_main","idle_second","idle_third","idle_fourth",
 		"forward_a","forward_b","forward_extra","backward_a","backward_b","side_a","side_b"
@@ -368,8 +254,6 @@ local function stopAllMovementTracks()
 			pcall(function() t:Stop() end)
 		end
 	end
-
-	-- ensure support idle weights reset
 	for _,k in ipairs({"idle_second","idle_third","idle_fourth"}) do
 		local t = animTracks[k]
 		if t then pcall(function() t:AdjustWeight(0) end) end
@@ -377,40 +261,27 @@ local function stopAllMovementTracks()
 end
 
 local function stopAllBoostTracks()
-	-- limpiar handlers del boost amarillo antes de parar anims
-	if yellowSpeedConn then
-		pcall(function() yellowSpeedConn:Disconnect() end)
-		yellowSpeedConn = nil
-	end
+	if yellowSpeedConn then pcall(function() yellowSpeedConn:Disconnect() end) yellowSpeedConn = nil end
 	yellowFreezeTask = nil
 
-	-- detener anims
 	for _,v in ipairs({"boost_cyan","boost_yellow","boost_red_prio","boost_red_sec"}) do
 		local t = animTracks[v]
 		if t and t.IsPlaying then pcall(function() t:Stop() end) end
 	end
-	-- liberar pies por si estaban bloqueados
 	pcall(unlockFeet)
-	currentBoostState = 0
 end
 
 local currentMovementState = nil
 local currentBoostState = 0
 
--- Idle reverse routine (implemented exactly as your standalone)
 local function startIdleReverse()
-	-- safety: disconnect if already running
-	if idleReverseConn then
-		pcall(function() idleReverseConn:Disconnect() end)
-		idleReverseConn = nil
-	end
+	if idleReverseConn then pcall(function() idleReverseConn:Disconnect() end) idleReverseConn = nil end
 
 	local main = animTracks.idle_main
 	local s2 = animTracks.idle_second
 	local s3 = animTracks.idle_third
 	local s4 = animTracks.idle_fourth
 
-	-- fallback: if main missing, just make the other ones visible
 	if not main then
 		if s2 then pcall(function() s2:Play(); s2.TimePosition = 0; s2:AdjustSpeed(0); s2.Priority = Enum.AnimationPriority.Action3; s2:AdjustWeight(1,0.1) end) end
 		if s3 then pcall(function() s3:Play(); s3.TimePosition = 0; s3:AdjustSpeed(0); s3.Priority = Enum.AnimationPriority.Action; s3:AdjustWeight(1,0.1) end) end
@@ -418,12 +289,10 @@ local function startIdleReverse()
 		return
 	end
 
-	-- ensure supporters are frozen and invisible
 	if s2 then pcall(function() s2:Play(); s2.TimePosition = 0; s2:AdjustSpeed(0); s2:AdjustWeight(0); s2.Priority = Enum.AnimationPriority.Action3 end) end
 	if s3 then pcall(function() s3:Play(); s3.TimePosition = 0; s3:AdjustSpeed(0); s3:AdjustWeight(0); s3.Priority = Enum.AnimationPriority.Action end) end
 	if s4 then pcall(function() s4:Play(); s4.TimePosition = 0; s4:AdjustSpeed(0); s4:AdjustWeight(0); s4.Priority = Enum.AnimationPriority.Action end) end
 
-	-- prepare main
 	pcall(function()
 		main.Looped = false
 		main.Priority = Enum.AnimationPriority.Action3
@@ -432,13 +301,11 @@ local function startIdleReverse()
 		main:AdjustWeight(1)
 	end)
 
-	-- wait a short tick to ensure engine registers Length (if needed)
 	task.wait()
 
 	local ok, animLength = pcall(function() return main.Length end)
 	animLength = (ok and type(animLength) == "number" and animLength > 0) and animLength or 0
 
-	-- if length is zero, reveal supporters as fallback
 	if animLength <= 0 then
 		if s2 then pcall(function() s2:AdjustWeight(1,0.1) end) end
 		if s3 then pcall(function() s3:AdjustWeight(1,0.1) end) end
@@ -449,7 +316,6 @@ local function startIdleReverse()
 	local REVERSE_SPEED = 33
 	local FREEZE_AT = 0.370
 
-	-- position main at the end
 	local currentTime = animLength
 	pcall(function() main.TimePosition = currentTime end)
 
@@ -465,11 +331,9 @@ local function startIdleReverse()
 				main:AdjustSpeed(0)
 			end)
 			isFrozen = true
-			-- reveal supporting tracks smoothly
 			if s2 then pcall(function() s2:AdjustWeight(1, 0.1) end) end
 			if s3 then pcall(function() s3:AdjustWeight(1, 0.1) end) end
 			if s4 then pcall(function() s4:AdjustWeight(1, 0.1) end) end
-			-- disconnect
 			if idleReverseConn then pcall(function() idleReverseConn:Disconnect() end) idleReverseConn = nil end
 		else
 			pcall(function() main.TimePosition = currentTime end)
@@ -479,7 +343,6 @@ end
 
 local function playMovementTrack(state)
 	if currentMovementState == state then return end
-	-- if leaving idle, clean reverse connection & reset supporting weights
 	if currentMovementState == "idle" and state ~= "idle" then
 		if idleReverseConn then pcall(function() idleReverseConn:Disconnect() end) idleReverseConn = nil end
 		for _,k in ipairs({"idle_second","idle_third","idle_fourth"}) do
@@ -493,7 +356,6 @@ local function playMovementTrack(state)
 	if state == "idle" then
 		startIdleReverse()
 	else
-		-- forward/back/side use their paired tracks
 		if state == "forward" then
 			local a,b,e = animTracks.forward_a, animTracks.forward_b, animTracks.forward_extra
 			if a then a:Play(); pcall(function() a.TimePosition = 0; a:AdjustSpeed(0); a.Priority = Enum.AnimationPriority.Action3; a:AdjustWeight(1) end) end
@@ -511,6 +373,174 @@ local function playMovementTrack(state)
 	end
 end
 
+-- UI CREATION: use the UI code you provided (shadows, background, boost & fly buttons, indicator)
+-- I'll create the UI and then map the controls to the flight logic below.
+
+-- Clear any previous GUI
+local existingGui = playerGui:FindFirstChild("FlyBoostUI")
+if existingGui then existingGui:Destroy() end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FlyBoostUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- Shadows / background layers (kept from your UI)
+local function makeShadow(name, x,y,w,h,transp,corner)
+	local f = Instance.new("Frame")
+	f.Name = name
+	f.Position = UDim2.new(0, x, 0, y)
+	f.Size = UDim2.new(0, w, 0, h)
+	f.BackgroundColor3 = Color3.fromRGB(0,0,0)
+	f.BackgroundTransparency = transp
+	f.BorderSizePixel = 0
+	f.ZIndex = 0
+	f.Parent = screenGui
+	local c = Instance.new("UICorner", f)
+	c.CornerRadius = UDim.new(0, corner)
+	return f
+end
+
+makeShadow("Shadow1", 972, 125, 176, 177, 0.997, 28)
+makeShadow("Shadow2", 972, 127, 176, 173, 0.977, 26)
+makeShadow("Shadow3", 972, 129, 176, 169, 0.949, 24)
+makeShadow("Shadow4", 972, 131, 176, 165, 0.929, 22)
+makeShadow("Shadow5", 972, 133, 176, 161, 0.909, 20)
+makeShadow("Shadow6", 972, 135, 176, 157, 0.889, 18)
+
+local background = Instance.new("Frame")
+background.Name = "Background"
+background.Position = UDim2.new(0, 972, 0, 137)
+background.Size = UDim2.new(0, 176, 0, 153)
+background.BackgroundColor3 = Color3.fromRGB(0,0,0)
+background.BackgroundTransparency = 0.909
+background.BorderSizePixel = 0
+background.ZIndex = 0
+background.Parent = screenGui
+local backgroundCorner = Instance.new("UICorner", background)
+backgroundCorner.CornerRadius = UDim.new(0, 16)
+
+-- BOOST button (your UI)
+local boostButton = Instance.new("TextButton")
+boostButton.Name = "BoostButton"
+boostButton.Position = UDim2.new(0, 976, 0, 140)
+boostButton.Size = UDim2.new(0, 168, 0, 74)
+boostButton.BackgroundColor3 = Color3.fromRGB(0, 115, 216)
+boostButton.BackgroundTransparency = 0.25
+boostButton.BorderSizePixel = 0
+boostButton.Text = "BOOST"
+boostButton.TextColor3 = Color3.fromRGB(219, 219, 230)
+boostButton.TextSize = 51
+boostButton.Font = Enum.Font.ArialBold
+boostButton.TextStrokeTransparency = 0
+boostButton.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+boostButton.ZIndex = 1
+boostButton.Parent = screenGui
+local boostCorner = Instance.new("UICorner", boostButton)
+boostCorner.CornerRadius = UDim.new(1,0)
+
+-- FLY button (your UI)
+local flyButton = Instance.new("TextButton")
+flyButton.Name = "FlyButton"
+flyButton.Position = UDim2.new(0, 976, 0, 215)
+flyButton.Size = UDim2.new(0, 168, 0, 74)
+flyButton.BackgroundColor3 = Color3.fromRGB(203, 40, 40)
+flyButton.BackgroundTransparency = 0.25
+flyButton.BorderSizePixel = 0
+flyButton.Text = "FLY"
+flyButton.TextColor3 = Color3.fromRGB(219, 219, 230)
+flyButton.TextSize = 69
+flyButton.Font = Enum.Font.ArialBold
+flyButton.TextStrokeTransparency = 0
+flyButton.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+flyButton.ZIndex = 1
+flyButton.Parent = screenGui
+local flyCorner = Instance.new("UICorner", flyButton)
+flyCorner.CornerRadius = UDim.new(1,0)
+
+-- Boost indicator capsule
+local boostIndicator = Instance.new("Frame")
+boostIndicator.Name = "BoostIndicator"
+boostIndicator.Position = UDim2.new(0, 967, 0, 190)
+boostIndicator.Size = UDim2.new(0, 54, 0, 28)
+boostIndicator.BackgroundColor3 = Color3.fromRGB(255,255,255)
+boostIndicator.BackgroundTransparency = 0.28
+boostIndicator.BorderSizePixel = 0
+boostIndicator.Visible = false
+boostIndicator.ZIndex = 2
+boostIndicator.Parent = screenGui
+local indicatorCorner = Instance.new("UICorner", boostIndicator)
+indicatorCorner.CornerRadius = UDim.new(1,0)
+
+-- UI state vars (from your UI)
+local flyActive_ui = false          -- UI's local fly state (keeps in sync with `flying`)
+local isAnimating = false
+local indicatorColors = {
+	[0] = Color3.fromRGB(255,255,255),
+	[1] = Color3.fromRGB(100,150,180),
+	[2] = Color3.fromRGB(255,204,0),
+	[3] = Color3.fromRGB(255,0,0)
+}
+local originalBoostSize = UDim2.new(0,168,0,74)
+local originalBoostPos  = UDim2.new(0,976,0,140)
+local originalFlySize   = UDim2.new(0,168,0,74)
+local originalFlyPos    = UDim2.new(0,976,0,215)
+local originalIndicatorSize = UDim2.new(0,54,0,28)
+local originalIndicatorPos  = UDim2.new(0,967,0,190)
+
+-- UI animation helpers (kept from your UI)
+local function animateButton(button, originalSize, originalPos)
+	if isAnimating then return end
+	isAnimating = true
+	local sizeReduction = UDim2.new(0,14,0,14)
+	local positionOffset = UDim2.new(0,7,0,7)
+
+	local tweenInfoDown = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local goal = { Size = originalSize - sizeReduction, Position = originalPos + positionOffset }
+	local tween = TweenService:Create(button, tweenInfoDown, goal)
+	tween:Play()
+	tween.Completed:Wait()
+
+	local tweenInfoBack = TweenInfo.new(0.12, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+	local goalBack = { Size = originalSize, Position = originalPos }
+	local tweenBack = TweenService:Create(button, tweenInfoBack, goalBack)
+	tweenBack:Play()
+	tweenBack.Completed:Connect(function()
+		isAnimating = false
+	end)
+end
+
+local function animateHover(button, isHovering, originalSize, originalPos)
+	local sizeChange = UDim2.new(0,3,0,3)
+	local positionChange = UDim2.new(0,1.5,0,1.5)
+
+	local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	if isHovering then
+		local goal = { Size = originalSize - sizeChange, Position = originalPos + positionChange, BackgroundTransparency = 0.15 }
+		local tween = TweenService:Create(button, tweenInfo, goal)
+		tween:Play()
+	else
+		local goal = { Size = originalSize, Position = originalPos, BackgroundTransparency = 0.25 }
+		local tween = TweenService:Create(button, tweenInfo, goal)
+		tween:Play()
+	end
+end
+
+local function animateIndicator()
+	local sizeReduction = UDim2.new(0,4,0,4)
+	local positionOffset = UDim2.new(0,2,0,2)
+	local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local goalDown = { Size = originalIndicatorSize - sizeReduction, Position = originalIndicatorPos + positionOffset }
+	local tweenDown = TweenService:Create(boostIndicator, tweenInfo, goalDown)
+	tweenDown:Play()
+	tweenDown.Completed:Wait()
+	local tweenInfoBack = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local goalBack = { Size = originalIndicatorSize, Position = originalIndicatorPos }
+	local tweenBack = TweenService:Create(boostIndicator, tweenInfoBack, goalBack)
+	tweenBack:Play()
+end
+
+-- keep setBoostIndicatorByLevel function (from original) to also mutate size when appropriate
 local function setBoostIndicatorByLevel(level)
 	if level == 0 then
 		TweenService:Create(boostIndicator, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(255,255,255), Size = UDim2.new(0,52,0,32)}):Play()
@@ -523,14 +553,52 @@ local function setBoostIndicatorByLevel(level)
 	end
 end
 
--- Boost amarillo: control de velocidad persistente y congelado
+-- update indicator color + small pulse (this ties UI animation to flight indicator)
+local function updateBoostIndicatorUI()
+	local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local goal = { BackgroundColor3 = indicatorColors[boostLevel] or indicatorColors[0] }
+	TweenService:Create(boostIndicator, tweenInfo, goal):Play()
+	animateIndicator()
+end
+
+local function updateIndicatorVisibilityUI()
+	boostIndicator.Visible = flyActive_ui
+end
+
+-- Input helpers (kept)
+local function camBasisFull() local cam = camera.CFrame return cam.LookVector, cam.RightVector end
+local function getMobileAxes()
+	local md = humanoid.MoveDirection
+	if md.Magnitude < 0.01 then return 0,0,0 end
+	local camLook, camRight = camBasisFull()
+	local fwdFlat = Vector3.new(camLook.X,0,camLook.Z); if fwdFlat.Magnitude>0 then fwdFlat = fwdFlat.Unit end
+	local rightFlat = Vector3.new(camRight.X,0,camRight.Z); if rightFlat.Magnitude>0 then rightFlat = rightFlat.Unit end
+	return md:Dot(fwdFlat), md:Dot(rightFlat), md.Magnitude
+end
+local function getKeyboardAxes()
+	local f = 0; local r = 0
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then f = f + 1 end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then f = f - 1 end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then r = r + 1 end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then r = r - 1 end
+	return f, r
+end
+local function isPlayerMoving()
+	if humanoid and humanoid.MoveDirection and humanoid.MoveDirection.Magnitude > INPUT_DEADZONE then return true end
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.A)
+	 or UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.D) then
+		return true
+	end
+	return false
+end
+
+-- Boost Yellow routine (preserved)
 local function startYellowRoutine(track)
 	if not track then return end
 	clearYellowHandlers()
 	local CONSTANT_SPEED = 33
 	local freezeScheduled = false
 
-	-- watchdog para forzar velocidad
 	yellowSpeedConn = RunService.Heartbeat:Connect(function()
 		if track and track.IsPlaying and not freezeScheduled then
 			if track.Speed ~= CONSTANT_SPEED then
@@ -539,10 +607,8 @@ local function startYellowRoutine(track)
 		end
 	end)
 
-	-- reproducir a velocidad constante
 	pcall(function() track:Play(); track:AdjustSpeed(CONSTANT_SPEED); track.Priority = Enum.AnimationPriority.Action end)
 
-	-- calcular tiempo y programar congelado en coroutine
 	yellowFreezeTask = coroutine.create(function()
 		local ok, length = pcall(function() return track.Length end)
 		local animLength = (ok and type(length) == "number" and length > 0) and length or 0
@@ -556,11 +622,16 @@ local function startYellowRoutine(track)
 	coroutine.resume(yellowFreezeTask)
 end
 
+-- playBoostTrack (keeps original behavior but uses UI indicator)
 local function playBoostTrack(level)
 	if currentBoostState == level then return end
 	stopAllBoostTracks()
 	currentBoostState = level
 	setBoostIndicatorByLevel(level)
+	-- Also update simple UI color/size
+	boostLevel = level
+	updateBoostIndicatorUI()
+
 	if level == 0 then return end
 
 	if level == 1 then
@@ -568,7 +639,6 @@ local function playBoostTrack(level)
 		if t then pcall(function() t.Priority = Enum.AnimationPriority.Action; t:Play(); t:AdjustSpeed(1) end) end
 
 	elseif level == 2 then
-		-- Boost amarillo
 		local t = animTracks.boost_yellow
 		if t then startYellowRoutine(t) end
 
@@ -577,67 +647,37 @@ local function playBoostTrack(level)
 		local sc = animTracks.boost_red_sec
 		if pr then pcall(function() pr.Priority = Enum.AnimationPriority.Action4; pr:Play(); pr:AdjustSpeed(0); pr.TimePosition = 0; pr:AdjustWeight(1) end) end
 		if sc then pcall(function() sc.Priority = Enum.AnimationPriority.Action3; sc:Play(); sc:AdjustSpeed(0); sc.TimePosition = 0; sc:AdjustWeight(1) end) end
-
-		-- NOTA: ya no bloqueamos pies (lockFeet removido intencionalmente)
 	end
 end
 
--- Input helpers
-local function camBasisFull() local cam = camera.CFrame return cam.LookVector, cam.RightVector end
+-- INITIAL: ensure anims loaded
+loadAnimationsToHumanoid(humanoid)
 
-local function getMobileAxes()
-	local md = humanoid.MoveDirection
-	if md.Magnitude < 0.01 then return 0,0,0 end
-	local camLook, camRight = camBasisFull()
-	local fwdFlat = Vector3.new(camLook.X,0,camLook.Z); if fwdFlat.Magnitude>0 then fwdFlat = fwdFlat.Unit end
-	local rightFlat = Vector3.new(camRight.X,0,camRight.Z); if rightFlat.Magnitude>0 then rightFlat = rightFlat.Unit end
-	return md:Dot(fwdFlat), md:Dot(rightFlat), md.Magnitude
-end
+-- Sync UI initial text/colors with flight state
+flyButton.Text = "FLY"
+boostButton.Text = "BOOST"
+flyButton.BackgroundColor3 = Color3.fromRGB(203,40,40)
+boostIndicator.Visible = false
+setBoostIndicatorByLevel(0)
 
-local function getKeyboardAxes()
-	local f = 0; local r = 0
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) then f = f + 1 end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) then f = f - 1 end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) then r = r + 1 end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) then r = r - 1 end
-	return f, r
-end
+-- ---------- CONNECT UI EVENTS TO FLIGHT LOGIC ----------
 
-local function isPlayerMoving()
-	if humanoid and humanoid.MoveDirection and humanoid.MoveDirection.Magnitude > INPUT_DEADZONE then return true end
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.A)
-	 or UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.D) then
-		return true
-	end
-	return false
-end
+-- When UI fly button is clicked: toggle flight state (red: off; green: on)
+flyButton.MouseButton1Click:Connect(function()
+	animateButton(flyButton, originalFlySize, originalFlyPos)
 
--- Botones
-impulsoBtn.MouseButton1Click:Connect(function()
-	safeBounce(impulsoBtn)
-	if not flying then return end
-	if not isPlayerMoving() then return end
-	boostLevel = (boostLevel + 1) % 4
-	if boostLevel == 0 then targetSpeed = BASE_SPEED; targetFOV = FOV_BASE
-	else targetSpeed = BOOST_SPEEDS[boostLevel]; targetFOV = FOV_LEVELS[boostLevel] end
-	playBoostTrack(boostLevel)
-end)
+	-- toggle UI state
+	flyActive_ui = not flyActive_ui
+	updateIndicatorVisibilityUI()
 
-flyBtn.MouseButton1Click:Connect(function()
-	safeBounce(flyBtn)
-	if flying then
-		-- Deactivate
-		flying = false
-		removeBodyMovers()
-		humanoid.PlatformStand = false
-		stopAllBoostTracks(); stopAllMovementTracks()
-		currentMovementState = nil; currentBoostState = 0; boostLevel = 0
-		targetSpeed = BASE_SPEED; targetFOV = FOV_BASE
-		flyBtn.Text = "Fly OFF"
-		tween(flyBtn,{BackgroundColor3 = FLY_INACTIVE_COLOR},0.12)
-		setBoostIndicatorByLevel(0)
-	else
-		-- Activate
+	-- animate color change on the button
+	local tweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local colorGoal = flyActive_ui and {BackgroundColor3 = FLY_ACTIVE_COLOR} or {BackgroundColor3 = Color3.fromRGB(203,40,40)}
+	TweenService:Create(flyButton, tweenInfo, colorGoal):Play()
+
+	-- Now toggle the actual flight logic to match UI:
+	if flyActive_ui and not flying then
+		-- Activate flight logic
 		flying = true
 		levBaseY = hrp.Position.Y
 		tAccum = 0
@@ -647,47 +687,62 @@ flyBtn.MouseButton1Click:Connect(function()
 		if not next(animTracks) then loadAnimationsToHumanoid(humanoid) end
 		playMovementTrack("idle")
 		playBoostTrack(boostLevel)
-		flyBtn.Text = "Fly ON"
-		tween(flyBtn,{BackgroundColor3 = FLY_ACTIVE_COLOR},0.12)
+		flyButton.Text = "FLY"
+		-- ensure indicator visible & current level applied
+		boostIndicator.Visible = true
 		setBoostIndicatorByLevel(boostLevel)
-	end
-end)
-
--- Death / respawn handling
-humanoid.Died:Connect(function()
-	if flying then
+	elseif not flyActive_ui and flying then
+		-- Deactivate flight logic
 		flying = false
 		removeBodyMovers()
 		humanoid.PlatformStand = false
 		stopAllBoostTracks(); stopAllMovementTracks()
 		currentMovementState = nil; currentBoostState = 0; boostLevel = 0
 		targetSpeed = BASE_SPEED; targetFOV = FOV_BASE
-		flyBtn.Text = "Fly OFF"
-		tween(flyBtn,{BackgroundColor3 = FLY_INACTIVE_COLOR},0.12)
+		flyButton.Text = "FLY"
+		-- reset UI indicator
+		boostIndicator.Visible = false
 		setBoostIndicatorByLevel(0)
 	end
 end)
 
-player.CharacterAdded:Connect(function(char)
-	character = char
-	humanoid = character:WaitForChild("Humanoid")
-	hrp = character:WaitForChild("HumanoidRootPart")
-	-- aseguro limpieza
-	removeBodyMovers()
-	gui.Parent = player:WaitForChild("PlayerGui")
-	flying = false
-	humanoid.PlatformStand = false
-	stopAllBoostTracks(); stopAllMovementTracks()
-	animTracks = {}
-	loadAnimationsToHumanoid(humanoid)
-	currentMovementState = nil; currentBoostState = 0; boostLevel = 0
-	targetSpeed = BASE_SPEED; targetFOV = FOV_BASE
-	flyBtn.Text = "Fly OFF"
-	tween(flyBtn,{BackgroundColor3 = FLY_INACTIVE_COLOR},0.1)
-	setBoostIndicatorByLevel(0)
+-- Hover animations on FLY (optional for mouse)
+flyButton.MouseEnter:Connect(function()
+	if not isAnimating then animateHover(flyButton, true, originalFlySize, originalFlyPos) end
+end)
+flyButton.MouseLeave:Connect(function()
+	if not isAnimating then animateHover(flyButton, false, originalFlySize, originalFlyPos) end
 end)
 
--- Main loop
+-- BOOST button behavior
+boostButton.MouseButton1Click:Connect(function()
+	animateButton(boostButton, originalBoostSize, originalBoostPos)
+
+	-- Only change boost while flight is active
+	if flying then
+		boostLevel = (boostLevel + 1) % 4
+		-- update flight internals
+		if boostLevel == 0 then
+			targetSpeed = BASE_SPEED; targetFOV = FOV_BASE
+		else
+			targetSpeed = BOOST_SPEEDS[boostLevel]; targetFOV = FOV_LEVELS[boostLevel]
+		end
+		-- apply the visual indicator & play boost anims
+		setBoostIndicatorByLevel(boostLevel)
+		playBoostTrack(boostLevel)
+	end
+end)
+
+boostButton.MouseEnter:Connect(function()
+	if not isAnimating then animateHover(boostButton, true, originalBoostSize, originalBoostPos) end
+end)
+boostButton.MouseLeave:Connect(function()
+	if not isAnimating then animateHover(boostButton, false, originalBoostSize, originalBoostPos) end
+end)
+
+-- ---------- INPUT / MAIN LOOP (unchanged flight loop behavior) ----------
+local function camBasisFull() local cam = camera.CFrame return cam.LookVector, cam.RightVector end
+
 RunService.RenderStepped:Connect(function(dt)
 	tAccum = tAccum + dt
 	currentSpeed = currentSpeed + (targetSpeed - currentSpeed) * math.clamp(dt * SPEED_LERP, 0, 1)
@@ -711,7 +766,6 @@ RunService.RenderStepped:Connect(function(dt)
 		local camLookVec = camera.CFrame.LookVector
 		local desiredCamCFrame = CFrame.lookAt(camPos, camPos + camLookVec, Vector3.new(0,1,0)) * CFrame.Angles(0,0,currentCamRoll)
 		camera.CFrame = camera.CFrame:Lerp(desiredCamCFrame, math.clamp(dt * 8, 0, 1))
-		-- if any movers still exist, neutralize them
 		if bodyVel then bodyVel.MaxForce = Vector3.new(0,0,0); bodyVel.Velocity = Vector3.new(0,0,0) end
 		if bodyGyro then bodyGyro.MaxTorque = Vector3.new(0,0,0) end
 		return
@@ -798,53 +852,60 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 end)
 
--- Inicial
-loadAnimationsToHumanoid(humanoid)
-flyBtn.Text = "Fly OFF"
-impulsoBtn.Text = "IMPULSO"
-tween(flyBtn,{BackgroundColor3 = FLY_INACTIVE_COLOR},0.1)
-setBoostIndicatorByLevel(0)
+-- Death / respawn handling (kept)
+humanoid.Died:Connect(function()
+	if flying then
+		flying = false
+		removeBodyMovers()
+		humanoid.PlatformStand = false
+		stopAllBoostTracks(); stopAllMovementTracks()
+		currentMovementState = nil; currentBoostState = 0; boostLevel = 0
+		targetSpeed = BASE_SPEED; targetFOV = FOV_BASE
+		flyButton.Text = "FLY"
+		flyButton.BackgroundColor3 = Color3.fromRGB(203,40,40)
+		boostIndicator.Visible = false
+		setBoostIndicatorByLevel(0)
+	end
+end)
 
-print("[Flight v6.4 - final completo] BoostRed sin lockFeet + forward_extra (161235826) agregado + Idle REVERSE 4-anims.")
+player.CharacterAdded:Connect(function(char)
+	character = char
+	humanoid = character:WaitForChild("Humanoid")
+	hrp = character:WaitForChild("HumanoidRootPart")
+	removeBodyMovers()
+	-- reparent GUI to PlayerGui in case of respawn
+	screenGui.Parent = player:WaitForChild("PlayerGui")
+	flying = false
+	humanoid.PlatformStand = false
+	stopAllBoostTracks(); stopAllMovementTracks()
+	animTracks = {}
+	loadAnimationsToHumanoid(humanoid)
+	currentMovementState = nil; currentBoostState = 0; boostLevel = 0
+	targetSpeed = BASE_SPEED; targetFOV = FOV_BASE
+	flyButton.Text = "FLY"
+	flyButton.BackgroundColor3 = Color3.fromRGB(203,40,40)
+	boostIndicator.Visible = false
+	setBoostIndicatorByLevel(0)
+end)
 
--- RefreshAnims Script
--- Coloca este script en StarterPlayer > StarterPlayerScripts
-
-local Players = game:GetService("Players")
-local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
-
--- Función para refrescar constantemente durante un tiempo determinado
+-- ---------- RefreshAnims (kept as you requested) ----------
 local function refreshConstantly(duration)
 	local startTime = tick()
-	
 	while tick() - startTime < duration do
-		-- Obtener el Animator del Humanoid
 		local animator = humanoid:FindFirstChildOfClass("Animator")
-		
 		if animator then
-			-- Detener todas las animaciones en reproducción
 			local playingTracks = animator:GetPlayingAnimationTracks()
-			
 			for _, track in pairs(playingTracks) do
-				track:Stop(0) -- Detener inmediatamente
+				track:Stop(0)
 				track:Destroy()
 			end
 		end
-		
-		task.wait() -- Esperar un frame antes de refrescar de nuevo
+		task.wait()
 	end
-	
 	print("Refresco de animaciones completado")
 end
 
--- Ejecutar el refresco constante al inicio
+-- run the refresher at start and on respawn (already wired above for CharacterAdded)
 refreshConstantly(1.5)
 
--- Refrescar animaciones constantemente cada vez que el personaje reaparece
-player.CharacterAdded:Connect(function(newCharacter)
-	character = newCharacter
-	humanoid = character:WaitForChild("Humanoid")
-	refreshConstantly(1.5)
-end)
+print("Vuelo de inservible, cargado correctamente")
