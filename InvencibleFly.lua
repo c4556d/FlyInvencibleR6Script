@@ -15,7 +15,7 @@ local camera = workspace.CurrentCamera
 local BASE_SPEED = 39.93
 local BOOST_SPEEDS = {79.87, 199.66, 319.46}
 local FOV_BASE = camera.FieldOfView
-local FOV_LEVELS = {FOV_BASE + 10, FOV_BASE + 20, FOV_BASE + 30}
+local FOV_LEVELS = {FOV_BASE + 35, FOV_BASE + 58, FOV_BASE + 88}
 
 local SPEED_LERP = 8
 local VEL_LERP = 8
@@ -123,20 +123,20 @@ local ANIMATIONS_PREPARED = {
 local BOOST_LEVELS = {
 	[1] = {
 		SPEED = BOOST_SPEEDS[1],
-		FOV_INCREASE = 10,
+		FOV_INCREASE = 35,
 		ANIMATION_HIGH = "rbxassetid://90872539",
 		TILT = 90
 	},
 	[2] = {
 		SPEED = BOOST_SPEEDS[2],
-		FOV_INCREASE = 20,
+		FOV_INCREASE = 58,
 		ANIMATION_HIGH = "rbxassetid://93693205",
 		ANIMATION_HIGH_CUT = 4.012,
 		TILT = 90
 	},
 	[3] = {
 		SPEED = BOOST_SPEEDS[3],
-		FOV_INCREASE = 30,
+		FOV_INCREASE = 88,
 		ANIMATION_LOW_1 = "rbxassetid://188856222",
 		ANIMATION_LOW_2 = "rbxassetid://97169019",
 		ANIMATION_HIGH = "rbxassetid://148831127",
