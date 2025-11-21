@@ -365,7 +365,7 @@ end
 -- Lista de imágenes a precargar (image buttons + indicator)
 local IMAGE_ASSET_IDS = {
 	"rbxassetid://98500005316067", -- fly off
-	"rbxassetid://114583379233058", -- fly on
+	"rbxassetid://102164454407163", -- fly on
 	"rbxassetid://124646073516633",  -- boost / button texture
 	"rbxassetid://108793750615658", -- indicator 0
 	"rbxassetid://81527091583929",  -- indicator 1
@@ -597,7 +597,7 @@ end
 -- Función para cambiar la imagen del botón
 local function updateFlyButtonImage()
 	if flying then
-		flyBtn.Image = "rbxassetid://114583379233058" -- Encendido
+		flyBtn.Image = "rbxassetid://102164454407163" -- Encendido
 	else
 		flyBtn.Image = "rbxassetid://98500005316067" -- Apagado
 	end
