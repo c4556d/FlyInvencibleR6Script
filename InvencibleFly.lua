@@ -1,5 +1,4 @@
--- FlyInvencible Ultimate - R6
-
+-- FlyInvencible Ultimate - Con UI Botón de Vuelo (PARCHEADO + PRECARGAS + SPLASH)
 -- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1303,6 +1302,9 @@ humanoid.Died:Connect(function()
 	modeToggle.Position = UDim2.new(0.08, 0, 0.5, 0)
 	modeErrorPopup.Visible = false
 
+	-- NOTE: we no longer destroy a frozen track here; we only precache Animation assets
+end)
+
 player.CharacterAdded:Connect(function(char)
 	character = char
 	humanoid = character:WaitForChild("Humanoid")
@@ -1404,4 +1406,4 @@ task.spawn(function()
 	createFrozenForwardTrack()
 end)
 
-print("FlyInvencible Ultimate (ACTUALIZADO) cargado — Hecho por:G1")
+print("FlyInvencible Ultimate (parcheado) cargado — iniciando precarga de assets.")
