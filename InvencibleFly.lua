@@ -83,21 +83,6 @@ local ANIMATIONS_BASIC = {
 		HIGH_2 = "rbxassetid://153839856",
 		LOW_1 = "rbxassetid://74909500",
 		CUT_TO = 0.386
-	},
-	FORWARD = {
-		HIGH_1 = "rbxassetid://74909537",
-		HIGH_2 = "rbxassetid://153839856",
-		LOW_1 = "rbxassetid://97172005",
-		LOW_2 = "rbxassetid://161235826",
-		LOW_3 = "rbxassetid://97169019", -- ADDED: quinta animación (LOW_3)
-		CUT_TO = 0.386
-	},
-	BACKWARD = {
-		HIGH_1 = "rbxassetid://74909537",
-		HIGH_2 = "rbxassetid://153839856",
-		LOW_1 = "rbxassetid://69803972",
-		LOW_2 = "rbxassetid://161235826",
-		CUT_TO = 0.386
 	}
 }
 
@@ -105,17 +90,6 @@ local ANIMATIONS_PREPARED = {
 	IDLE = {
 		HIGH_1 = "rbxassetid://157568994",
 		LOW_1 = "rbxassetid://97172005",
-		LOW_2 = "rbxassetid://161235826"
-	},
-	FORWARD = {
-		HIGH_1 = "rbxassetid://157568994",
-		LOW_1 = "rbxassetid://97172005",
-		LOW_2 = "rbxassetid://161235826",
-		LOW_3 = "rbxassetid://97169019"
-	},
-	BACKWARD = {
-		HIGH_1 = "rbxassetid://157568994",
-		LOW_1 = "rbxassetid://69803972",
 		LOW_2 = "rbxassetid://161235826"
 	}
 }
@@ -192,11 +166,7 @@ local function preloadAnimationAsset(animId)
 	preloadedAnimations[animId] = a
 end
 
--- NEW: createFrozenForwardTrack now only precarga la animación (no play)
-local function createFrozenForwardTrack()
-	-- precarga el asset para la animación forward extra (no se reproduce)
-	preloadAnimationAsset("rbxassetid://97169019")
-end
+
 
 local function playStateAnimations(stateKey)
 	if currentAnimState == stateKey then return end
@@ -250,8 +220,6 @@ local function playStateAnimations(stateKey)
 end
 
 local function playIdleAnimations() playStateAnimations("IDLE") end
-local function playForwardAnimations() playStateAnimations("FORWARD") end
-local function playBackwardAnimations() playStateAnimations("BACKWARD") end
 
 local function playBoostAnimation(level)
 	if not BOOST_LEVELS[level] then return end
@@ -400,8 +368,6 @@ local function collectAnimationIds()
 			if type(v) == "string" then add(v) end
 		end
 	end
-	-- always include frozen forward
-	add("rbxassetid://97169019")
 	-- convert to array
 	local out = {}
 	for k,_ in pairs(ids) do table.insert(out, k) end
@@ -1233,54 +1199,33 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
-	-- Orientación + inclinaciones
+	-- Orientación (solo rotación básica hacia cámara, inclinaciones SOLO en boost)
 	local camLook = camera.CFrame.LookVector
 	local desiredCFrameBase = CFrame.lookAt(hrp.Position, hrp.Position + camLook, Vector3.new(0, 1, 0))
 
-	local tiltForward = 0
-	local tiltSide = 0
-	if inputMag > INPUT_DEADZONE then
-		local nx = fwdAxis / math.max(1, inputMag)
-		local ny = rightAxis / math.max(1, inputMag)
-		tiltForward = -INPUT_TILT_MAX * math.clamp(nx, -1, 1)
-		tiltSide = INPUT_ROLL_MAX * math.clamp(ny, -1, 1) * -1
+	local finalTiltForward = 0
+	local finalTiltSide = 0
+
+	-- SOLO aplicar inclinación si hay boost activo
+	if boostLevel > 0 and inputMag > INPUT_DEADZONE then 
+		finalTiltForward = BOOST_PITCH_DEG
 	end
-
-	local finalTiltForward = tiltForward
-	local finalTiltSide = tiltSide
-	if boostLevel > 0 and inputMag > INPUT_DEADZONE then finalTiltForward = BOOST_PITCH_DEG end
-
-	local cameraPitchDeg = math.deg(math.asin(math.clamp(camera.CFrame.LookVector.Y, -1, 1)))
-	local cameraTiltContribution = -cameraPitchDeg * CAMERA_TILT_INFLUENCE
-	finalTiltForward = finalTiltForward + cameraTiltContribution
-	finalTiltForward = math.clamp(finalTiltForward, -90, 90)
-	finalTiltSide = math.clamp(finalTiltSide, -45, 45)
 
 	local tiltCFrame = CFrame.Angles(math.rad(finalTiltForward), 0, math.rad(finalTiltSide))
 	local desiredBodyCFrame = desiredCFrameBase * tiltCFrame
+
 	if bodyGyro then
 		bodyGyro.CFrame = bodyGyro.CFrame:Lerp(desiredBodyCFrame, math.clamp(dt * ROT_LERP, 0, 1))
 		bodyGyro.P = 3000
 		bodyGyro.D = 200
 	end
 
-	local targetCamRoll = math.rad(finalTiltSide) * CAMERA_ROLL_INFLUENCE
-	currentCamRoll = currentCamRoll + (targetCamRoll - currentCamRoll) * math.clamp(dt * 8, 0, 1)
+	-- Cámara sin roll
+	currentCamRoll = currentCamRoll + (0 - currentCamRoll) * math.clamp(dt * 8, 0, 1)
 	local camPos = camera.CFrame.Position
 	local camLookVec = camera.CFrame.LookVector
 	local desiredCamCFrame2 = CFrame.lookAt(camPos, camPos + camLookVec, Vector3.new(0, 1, 0)) * CFrame.Angles(0, 0, currentCamRoll)
 	camera.CFrame = camera.CFrame:Lerp(desiredCamCFrame2, math.clamp(dt * 8, 0, 1))
-
-	-- Animaciones
-	if boostLevel == 0 then
-		if inputMag > INPUT_DEADZONE and fwdAxis > 0.25 then
-			playForwardAnimations()
-		elseif inputMag > INPUT_DEADZONE and fwdAxis < -0.25 then
-			playBackwardAnimations()
-		else
-			playIdleAnimations()
-		end
-	end
 end)
 
 -- Respawn handling
@@ -1330,9 +1275,7 @@ player.CharacterAdded:Connect(function(char)
 	modeToggle.Position = UDim2.new(0.08, 0, 0.5, 0)
 	modeErrorPopup.Visible = false
 
-	-- recreate precached forward animation asset for new humanoid (no play)
-	createFrozenForwardTrack()
-end)
+	end)
 
 -- create precache now (initial humanoid loaded)
 -- Preload logic: sequential to display progress
@@ -1402,8 +1345,6 @@ task.spawn(function()
 	-- Attach main UI
 	screenGui.Parent = player:WaitForChild("PlayerGui")
 
-	-- ensure frozen animation is cached
-	createFrozenForwardTrack()
-end)
+	end)
 
 print("FlyInvencible Ultimate (parcheado) cargado — iniciando precarga de assets.")
