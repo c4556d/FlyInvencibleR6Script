@@ -1124,8 +1124,53 @@ end
 
 -- Función para procesar boost click (ciclo de 4 niveles: 0 -> 1 -> 2 -> 3 -> 0)
 local function processBoostClick()
-	-- Solo funciona si flying = true Y el jugador se está moviendo
-	if not flying or not isPlayerMoving() then
+	-- Verificar si el boost está bloqueado
+	if not flying then
+		-- Feedback visual: parpadeo rojo suave cuando está bloqueado
+		local originalColor = boostBtn.ImageColor3
+		boostBtn.ImageColor3 = Color3.fromRGB(255, 100, 100)
+
+		-- Pequeña vibración
+		local originalPos = boostBtn.Position
+		local shake1 = TweenService:Create(boostBtn, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{Position = originalPos + UDim2.new(0, -4, 0, 0)})
+		local shake2 = TweenService:Create(boostBtn, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{Position = originalPos + UDim2.new(0, 4, 0, 0)})
+		local shake3 = TweenService:Create(boostBtn, TweenInfo.new(0.08, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
+			{Position = originalPos})
+
+		shake1:Play()
+		shake1.Completed:Connect(function()
+			shake2:Play()
+			shake2.Completed:Connect(function()
+				shake3:Play()
+			end)
+		end)
+
+		-- Restaurar color original
+		task.delay(0.25, function()
+			local colorRestore = TweenService:Create(boostBtn, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+				{ImageColor3 = originalColor})
+			colorRestore:Play()
+		end)
+
+		print("⚠️ Boost bloqueado: Activa el vuelo primero")
+		return
+	end
+
+	-- Verificar si el jugador no se está moviendo
+	if not isPlayerMoving() then
+		-- Feedback visual sutil: parpadeo amarillo
+		local originalColor = boostBtn.ImageColor3
+		boostBtn.ImageColor3 = Color3.fromRGB(255, 220, 100)
+
+		task.delay(0.2, function()
+			local colorRestore = TweenService:Create(boostBtn, TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+				{ImageColor3 = originalColor})
+			colorRestore:Play()
+		end)
+
+		print("⚠️ Boost bloqueado: Debes estar en movimiento")
 		return
 	end
 	
@@ -1167,11 +1212,9 @@ boostBtn.MouseButton1Click:Connect(function()
 	processBoostClick()
 end)
 
--- Hover events para boost button
+-- Hover events para boost button (SIEMPRE permitir hover)
 boostBtn.MouseEnter:Connect(function()
-	if flying then
-		setBoostHoverState(true)
-	end
+	setBoostHoverState(true)
 end)
 
 boostBtn.MouseLeave:Connect(function()
