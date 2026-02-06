@@ -509,7 +509,7 @@ local flyBtn = Instance.new("ImageButton")
 flyBtn.Name = "Flybtn"
 -- Boost está en Y=0.262, con altura de 83px
 -- Calculamos: 0.262 + (83px en escala) + pequeño espacio
-flyBtn.Position = UDim2.new(0.855, 0, 0.354, 0)  -- Justo debajo con pequeño gap
+flyBtn.Position = UDim2.new(0.855, 0, 0.435, 0)  -- Justo debajo con pequeño gap
 flyBtn.Size = UDim2.new(0, 173, 0, 83)
 flyBtn.BackgroundTransparency = 1
 flyBtn.BorderSizePixel = 0
