@@ -274,14 +274,25 @@ local function playBoostAnimation(level)
 	if cfg.ANIMATION_HIGH then
 		local tr = loadAnimation(cfg.ANIMATION_HIGH)
 		if tr then
-			tr.Looped = false
 			tr.Priority = Enum.AnimationPriority.Action3
-			tr:Play()
-			tr:AdjustSpeed(0)
-			if cfg.ANIMATION_HIGH_CUT then
-				task.wait()
-				pcall(function() tr.TimePosition = cfg.ANIMATION_HIGH_CUT end)
+
+			-- ESPECIAL: Boost Nivel 1 se reproduce normalmente (sin congelar)
+			if level == 1 then
+				tr.Looped = true  -- Loop continuo para que no termine
+				tr:Play()
+				tr:AdjustSpeed(1)  -- Velocidad normal (no congelada)
+				print("🚀 Animación Boost 1 reproduciéndose en loop")
+			else
+				-- Niveles 2 y 3 siguen congelados como antes
+				tr.Looped = false
+				tr:Play()
+				tr:AdjustSpeed(0)  -- Congelada
+				if cfg.ANIMATION_HIGH_CUT then
+					task.wait()
+					pcall(function() tr.TimePosition = cfg.ANIMATION_HIGH_CUT end)
+				end
 			end
+
 			table.insert(tracks, tr)
 		end
 	end
@@ -496,7 +507,9 @@ screenGui.ResetOnSpawn = false
 -- Crear botón de vuelo
 local flyBtn = Instance.new("ImageButton")
 flyBtn.Name = "Flybtn"
-flyBtn.Position = UDim2.new(0.855, 0, 0.426, 0)
+-- Boost está en Y=0.262, con altura de 83px
+-- Calculamos: 0.262 + (83px en escala) + pequeño espacio
+flyBtn.Position = UDim2.new(0.855, 0, 0.354, 0)  -- Justo debajo con pequeño gap
 flyBtn.Size = UDim2.new(0, 173, 0, 83)
 flyBtn.BackgroundTransparency = 1
 flyBtn.BorderSizePixel = 0
@@ -518,8 +531,9 @@ local isHovering = false
 local isPressing = false
 local originalSize = UDim2.new(0, 173, 0, 83)
 local pressedSize = UDim2.new(0, 146, 0, 56)
-local originalPos = UDim2.new(0.855, 0, 0.426, 0)
-local pressedPos = UDim2.new(0.855, 0, 0.426, 0) + UDim2.new(0, (173-146)/2, 0, (83-56)/2)
+-- Calcular posición original basada en la posición actual del botón
+local originalPos = flyBtn.Position
+local pressedPos = originalPos + UDim2.new(0, (173-146)/2, 0, (83-56)/2)
 
 -- Función para animar el botón al presionarlo
 local function animatePress()
