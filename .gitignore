@@ -1,0 +1,1 @@
+Nothing should be ignored based on the provided file changes. The changes include only a .gitignore file being added and a Lua source file (InvencibleFly.lua) being modified, with no build artifacts, dependencies, or temporary files present in the change list.
