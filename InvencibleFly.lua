@@ -11,6 +11,48 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local camera = workspace.CurrentCamera
 
+-- ============= SISTEMA ANTI-DUPLICACIÓN (TEMPORAL PARA TESTING) =============
+local SCRIPT_IDENTIFIER = "FlyInvencible_Ultimate_V1" -- Identificador único del script
+
+-- Verificar si ya existe una instancia previa ejecutándose
+local existingFlag = player:FindFirstChild(SCRIPT_IDENTIFIER)
+
+if existingFlag then
+	-- Si existe, destruir la instancia antigua
+	warn("[FlyInvencible] ⚠️ Detectada ejecución previa. Eliminando instancia antigua...")
+
+	-- Destruir GUI antigua si existe
+	local oldGui = playerGui:FindFirstChild("FlyGui")
+	if oldGui then
+		oldGui:Destroy()
+		print("[FlyInvencible] ✅ GUI antigua eliminada")
+	end
+
+	local oldLoadingGui = playerGui:FindFirstChild("FlyGui_Loading")
+	if oldLoadingGui then
+		oldLoadingGui:Destroy()
+		print("[FlyInvencible] ✅ Loading GUI antigua eliminada")
+	end
+
+	-- Destruir la flag antigua
+	existingFlag:Destroy()
+
+	-- Pequeña espera para asegurar limpieza
+	task.wait(0.2)
+end
+
+-- Crear nueva flag para marcar esta ejecución como activa
+local scriptFlag = Instance.new("BoolValue")
+scriptFlag.Name = SCRIPT_IDENTIFIER
+scriptFlag.Value = true
+scriptFlag.Parent = player
+
+print("[FlyInvencible] ✅ Nueva instancia iniciada correctamente")
+-- ============= FIN SISTEMA ANTI-DUPLICACIÓN =============
+
+
+
+
 -- Configuración
 local BASE_SPEED = 39.93
 local BOOST_SPEEDS = {79.87, 199.66, 319.46}
@@ -1348,3 +1390,11 @@ task.spawn(function()
 	end)
 
 print("FlyInvencible Ultimate (parcheado) cargado — iniciando precarga de assets.")
+
+-- Limpiar flag cuando el jugador salga o el script termine
+player.AncestryChanged:Connect(function()
+	if scriptFlag and scriptFlag.Parent then
+		scriptFlag:Destroy()
+		print("[FlyInvencible] 🧹 Flag limpiada al salir")
+	end
+end)
