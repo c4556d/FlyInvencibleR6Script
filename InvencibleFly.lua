@@ -77,6 +77,10 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local hrp = character:WaitForChild("HumanoidRootPart")
 
+-- AnimationController separado SOLO para animaciones Prepared
+local preparedAnimController = nil
+local preparedAnimator = nil
+
 -- Estado
 local flying = false
 local boostLevel = 0
@@ -114,6 +118,59 @@ local function removeBodyMovers()
 	if bodyVel then pcall(function() bodyVel:Destroy() end) bodyVel = nil end
 	if bodyGyro then pcall(function() bodyGyro:Destroy() end) bodyGyro = nil end
 end
+
+-- ============= ANIMATIONCONTROLLER SEPARADO PARA PREPARED =============
+local function createPreparedAnimationController()
+	-- Limpiar controlador previo si existe
+	if preparedAnimController then
+		pcall(function() preparedAnimController:Destroy() end)
+		preparedAnimController = nil
+		preparedAnimator = nil
+	end
+	
+	-- Crear nuevo AnimationController en HumanoidRootPart
+	preparedAnimController = Instance.new("AnimationController")
+	preparedAnimController.Name = "PreparedFlightAnimController"
+	preparedAnimController.Parent = hrp
+	
+	-- Crear Animator dentro del controller
+	preparedAnimator = Instance.new("Animator")
+	preparedAnimator.Parent = preparedAnimController
+	
+	print("✅ AnimationController separado creado para Prepared")
+end
+
+local function destroyPreparedAnimationController()
+	-- Limpiar conexiones de animaciones combinadas
+	if preparedAnim1Connection then 
+		preparedAnim1Connection:Disconnect()
+		preparedAnim1Connection = nil
+	end
+	if preparedAnim2Connection then 
+		preparedAnim2Connection:Disconnect()
+		preparedAnim2Connection = nil
+	end
+	
+	-- Destruir controller completo (esto detiene TODAS sus animaciones automáticamente)
+	if preparedAnimController then
+		pcall(function() preparedAnimController:Destroy() end)
+		preparedAnimController = nil
+		preparedAnimator = nil
+	end
+	
+	-- Reset tracks
+	preparedAnim1Track = nil
+	preparedAnim2Track = nil
+	
+	-- Reset variables
+	prepared_anim1_Reversing = false
+	prepared_anim1_ManualTime = 0
+	prepared_anim2_Reversing = false
+	prepared_anim2_ManualTime = PREPARED_ANIM2_START_TIME
+	
+	print("🧹 AnimationController de Prepared destruido")
+end
+-- ============= FIN ANIMATIONCONTROLLER SEPARADO =============
 
 -- Animaciones
 local ANIMATIONS_BASIC = {
@@ -188,12 +245,19 @@ local prepared_lastAnim2Update = 0
 -- NEW: table of preloaded Animation objects (NOT tracks)
 local preloadedAnimations = {}
 
-local function loadAnimation(animId)
+-- CHANGED: loadAnimation ahora soporta usar el Animator del humanoid O el de Prepared
+local function loadAnimation(animId, usePreparedController)
 	if not animId then return nil end
+	
+	-- Determinar qué animator usar
+	local targetAnimator = humanoid
+	if usePreparedController and preparedAnimator then
+		targetAnimator = preparedAnimator
+	end
 
 	-- If we have a preloaded Animation object, load from it
 	if preloadedAnimations[animId] then
-		local ok, track = pcall(function() return humanoid:LoadAnimation(preloadedAnimations[animId]) end)
+		local ok, track = pcall(function() return targetAnimator:LoadAnimation(preloadedAnimations[animId]) end)
 		if ok and track then return track end
 		-- fallback to dynamic creation below if LoadAnimation failed
 	end
@@ -201,7 +265,7 @@ local function loadAnimation(animId)
 	-- Fallback: create an Animation instance and load a track (not stored)
 	local a = Instance.new("Animation")
 	a.AnimationId = animId
-	local ok2, track2 = pcall(function() return humanoid:LoadAnimation(a) end)
+	local ok2, track2 = pcall(function() return targetAnimator:LoadAnimation(a) end)
 	if ok2 and track2 then return track2 end
 	return nil
 end
@@ -280,31 +344,8 @@ local function handlePreparedAnim2ReverseSmooth()
 end
 
 local function stopPreparedCombinedAnimations()
-	-- Detener conexiones
-	if preparedAnim1Connection then
-		preparedAnim1Connection:Disconnect()
-		preparedAnim1Connection = nil
-	end
-	if preparedAnim2Connection then
-		preparedAnim2Connection:Disconnect()
-		preparedAnim2Connection = nil
-	end
-
-	-- Detener tracks
-	if preparedAnim1Track then
-		pcall(function() preparedAnim1Track:Stop() end)
-		preparedAnim1Track = nil
-	end
-	if preparedAnim2Track then
-		pcall(function() preparedAnim2Track:Stop() end)
-		preparedAnim2Track = nil
-	end
-
-	-- Reset variables
-	prepared_anim1_Reversing = false
-	prepared_anim1_ManualTime = 0
-	prepared_anim2_Reversing = false
-	prepared_anim2_ManualTime = PREPARED_ANIM2_START_TIME
+	-- Simplemente destruir el controller completo (detiene todo automáticamente)
+	destroyPreparedAnimationController()
 end
 
 local function playPreparedCombinedAnimations()
@@ -1412,46 +1453,19 @@ local function processBoostClick()
 	boostLevel = (boostLevel + 1) % 4
 	
 	if boostLevel == 0 then
-		-- LIMPIEZA ULTRA-AGRESIVA para nivel 0
-		print("🔄 Volviendo a nivel 0 - Reinicio completo...")
-
-		-- Ver qué estaba activo ANTES de limpiar
-		debugActiveAnimations()
-
-		-- Paso 1: Detener TODAS las animaciones (normales + combinadas)
+		print("🔄 Volviendo a nivel 0...")
+		
+		-- Detener animaciones de boost del humanoid
 		stopAllAnimations()
-
-		-- Paso 2: Detener TODOS los tracks del animator manualmente
-		local animator = humanoid:FindFirstChildOfClass("Animator")
-		if animator then
-			for _, track in pairs(animator:GetPlayingAnimationTracks()) do
-				pcall(function()
-					track:Stop(0)  -- Stop inmediato (sin fade)
-				end)
-			end
-		end
-
-		-- Paso 3: Espera para asegurar que todo se limpió
-		task.wait(0.1)
-
-		-- Paso 4: Configurar velocidad y FOV
+		
+		-- Configurar velocidad y FOV
 		targetSpeed = BASE_SPEED
 		targetFOV = FOV_BASE
-
-		-- Paso 5: Cambiar brevemente el estado del humanoid para forzar reset
-		local wasStanding = humanoid.PlatformStand
-		humanoid.PlatformStand = false
-		task.wait(0.05)
-		humanoid.PlatformStand = wasStanding
-
-		-- Paso 6: Activar IDLE completamente limpio
+		
+		-- Activar IDLE (esto maneja prepared automáticamente)
 		playIdleAnimations()
-
-		-- Ver qué quedó activo DESPUÉS
-		task.wait(0.2)
-		debugActiveAnimations()
-
-		print("✅ Nivel 0 - Animaciones completamente reiniciadas")
+		
+		print("✅ Boost desactivado (Nivel 0)")
 	elseif boostLevel == 1 then
 		targetSpeed = BOOST_SPEEDS[1]
 		targetFOV = FOV_LEVELS[1]
