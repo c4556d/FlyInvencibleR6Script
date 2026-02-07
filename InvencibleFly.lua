@@ -208,6 +208,11 @@ end
 
 -- ============= FUNCIONES ANIMACIÓN COMBINADA PREPARED =============
 local function handlePreparedAnim1ReverseSmooth()
+	-- VERIFICAR: Solo ejecutar si flying, modo Prepared, y sin boost activo
+	if not flying or flightAnimMode ~= "FlyPrepared" or boostLevel ~= 0 then
+		return
+	end
+
 	if not preparedAnim1Track or not preparedAnim1Track.IsPlaying then
 		return
 	end
@@ -239,6 +244,11 @@ local function handlePreparedAnim1ReverseSmooth()
 end
 
 local function handlePreparedAnim2ReverseSmooth()
+	-- VERIFICAR: Solo ejecutar si flying, modo Prepared, y sin boost activo
+	if not flying or flightAnimMode ~= "FlyPrepared" or boostLevel ~= 0 then
+		return
+	end
+
 	if not preparedAnim2Track or not preparedAnim2Track.IsPlaying then
 		return
 	end
@@ -298,6 +308,11 @@ local function stopPreparedCombinedAnimations()
 end
 
 local function playPreparedCombinedAnimations()
+	-- VERIFICAR: Solo activar si está en modo Prepared y sin boost
+	if flightAnimMode ~= "FlyPrepared" or boostLevel ~= 0 then
+		print("⚠️ Animaciones combinadas bloqueadas (modo incorrecto o boost activo)")
+		return
+	end
 	-- Detener cualquier animación combinada previa
 	stopPreparedCombinedAnimations()
 
@@ -316,9 +331,9 @@ local function playPreparedCombinedAnimations()
 		-- Conectar actualización
 		preparedAnim1Connection = RunService.Heartbeat:Connect(handlePreparedAnim1ReverseSmooth)
 
-		-- Auto-restart si se detiene
+		-- Auto-restart si se detiene (pero solo si no hay boost)
 		preparedAnim1Track.Stopped:Connect(function()
-			if preparedAnim1Track and flying and flightAnimMode == "FlyPrepared" then
+			if preparedAnim1Track and flying and flightAnimMode == "FlyPrepared" and boostLevel == 0 then
 				preparedAnim1Track:Play()
 				preparedAnim1Track:AdjustSpeed(0)
 			end
@@ -342,9 +357,9 @@ local function playPreparedCombinedAnimations()
 		-- Conectar actualización
 		preparedAnim2Connection = RunService.Heartbeat:Connect(handlePreparedAnim2ReverseSmooth)
 
-		-- Auto-restart si se detiene
+		-- Auto-restart si se detiene (pero solo si no hay boost)
 		preparedAnim2Track.Stopped:Connect(function()
-			if preparedAnim2Track and flying and flightAnimMode == "FlyPrepared" then
+			if preparedAnim2Track and flying and flightAnimMode == "FlyPrepared" and boostLevel == 0 then
 				preparedAnim2Track:Play()
 				preparedAnim2Track:AdjustSpeed(0)
 			end
@@ -443,6 +458,10 @@ end
 local function playBoostAnimation(level)
 	if not BOOST_LEVELS[level] then return end
 	stopAllAnimations()
+
+	-- CRÍTICO: Detener animaciones combinadas de Prepared antes de boost
+	stopPreparedCombinedAnimations()
+
 	currentAnimState = "BOOST_" .. level
 
 	local cfg = BOOST_LEVELS[level]
@@ -1171,14 +1190,16 @@ flyBtn.MouseButton1Click:Connect(function()
 		wasMoving = isPlayerMoving()
 		createBodyMovers()
 		humanoid.PlatformStand = true
-		playIdleAnimations()
+
+		-- CRÍTICO: Solo reproducir IDLE si no hay boost activo
 		if boostLevel == 0 then
 			targetSpeed = BASE_SPEED
 			targetFOV = FOV_BASE
+			playIdleAnimations()  -- Aquí se activan animaciones combinadas si es Prepared
 		else
 			targetSpeed = BOOST_SPEEDS[boostLevel]
 			targetFOV = FOV_LEVELS[boostLevel]
-			playBoostAnimation(boostLevel)
+			playBoostAnimation(boostLevel)  -- Esto ya detiene combinadas
 		end
 		print("Vuelo activado")
 		-- Show indicator (nivel 0 por defecto)
