@@ -369,6 +369,24 @@ local function playPreparedCombinedAnimations()
 	end
 end
 -- ============= FIN FUNCIONES ANIMACIÓN COMBINADA =============
+-- FUNCIÓN DE DEBUG (temporal para identificar conflictos)
+local function debugActiveAnimations()
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then return end
+
+	local tracks = animator:GetPlayingAnimationTracks()
+	if #tracks == 0 then
+		print("🔍 DEBUG: No hay animaciones activas")
+		return
+	end
+
+	print("🔍 DEBUG: Animaciones activas (" .. #tracks .. "):")
+	for i, track in ipairs(tracks) do
+		local animId = track.Animation and track.Animation.AnimationId or "Unknown"
+		print("   " .. i .. ". " .. animId .. " (Prioridad: " .. tostring(track.Priority) .. ")")
+	end
+end
+
 
 local function stopAllAnimations()
 	for _, track in pairs(animTracks) do
@@ -1394,10 +1412,46 @@ local function processBoostClick()
 	boostLevel = (boostLevel + 1) % 4
 	
 	if boostLevel == 0 then
+		-- LIMPIEZA ULTRA-AGRESIVA para nivel 0
+		print("🔄 Volviendo a nivel 0 - Reinicio completo...")
+
+		-- Ver qué estaba activo ANTES de limpiar
+		debugActiveAnimations()
+
+		-- Paso 1: Detener TODAS las animaciones (normales + combinadas)
+		stopAllAnimations()
+
+		-- Paso 2: Detener TODOS los tracks del animator manualmente
+		local animator = humanoid:FindFirstChildOfClass("Animator")
+		if animator then
+			for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+				pcall(function()
+					track:Stop(0)  -- Stop inmediato (sin fade)
+				end)
+			end
+		end
+
+		-- Paso 3: Espera para asegurar que todo se limpió
+		task.wait(0.1)
+
+		-- Paso 4: Configurar velocidad y FOV
 		targetSpeed = BASE_SPEED
 		targetFOV = FOV_BASE
+
+		-- Paso 5: Cambiar brevemente el estado del humanoid para forzar reset
+		local wasStanding = humanoid.PlatformStand
+		humanoid.PlatformStand = false
+		task.wait(0.05)
+		humanoid.PlatformStand = wasStanding
+
+		-- Paso 6: Activar IDLE completamente limpio
 		playIdleAnimations()
-		print("Boost desactivado (Nivel 0)")
+
+		-- Ver qué quedó activo DESPUÉS
+		task.wait(0.2)
+		debugActiveAnimations()
+
+		print("✅ Nivel 0 - Animaciones completamente reiniciadas")
 	elseif boostLevel == 1 then
 		targetSpeed = BOOST_SPEEDS[1]
 		targetFOV = FOV_LEVELS[1]
@@ -1448,15 +1502,43 @@ RunService.RenderStepped:Connect(function(dt)
 	local movingNow = isPlayerMoving()
 	if wasMoving and not movingNow then
 		if boostLevel ~= 0 then
+			print("⚠️ Dejaste de moverte - Forzando nivel 0")
+
+			-- Limpieza completa de animaciones
+			stopAllAnimations()
+
+			-- Detener todos los tracks manualmente
+			local animator = humanoid:FindFirstChildOfClass("Animator")
+			if animator then
+				for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+					pcall(function() track:Stop(0) end)
+				end
+			end
+
+			-- Pequeña espera
+			task.wait(0.08)
+
+			-- Reset boost
 			boostLevel = 0
 			targetSpeed = BASE_SPEED
 			targetFOV = FOV_BASE
+
+			-- Cambiar estado humanoid brevemente
+			local wasStanding = humanoid.PlatformStand
+			humanoid.PlatformStand = false
+			task.wait(0.05)
+			humanoid.PlatformStand = wasStanding
+
+			-- Activar IDLE limpio
 			playIdleAnimations()
-			-- actualizar indicador a nivel 0 cuando el jugador ya no se mueve
+
+			-- Actualizar indicador
 			if flying then
 				showIndicator()
 				setIndicatorState(0)
 			end
+
+			print("✅ Nivel 0 restaurado (dejaste de moverte)")
 		end
 	end
 	wasMoving = movingNow
