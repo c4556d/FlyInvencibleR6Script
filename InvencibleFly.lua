@@ -11,45 +11,6 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local camera = workspace.CurrentCamera
 
--- ============= SISTEMA ANTI-DUPLICACIÓN (TEMPORAL PARA TESTING) =============
-local SCRIPT_IDENTIFIER = "FlyInvencible_Ultimate_V1" -- Identificador único del script
-
--- Verificar si ya existe una instancia previa ejecutándose
-local existingFlag = player:FindFirstChild(SCRIPT_IDENTIFIER)
-
-if existingFlag then
-	-- Si existe, destruir la instancia antigua
-	warn("[FlyInvencible] ⚠️ Detectada ejecución previa. Eliminando instancia antigua...")
-
-	-- Destruir GUI antigua si existe
-	local oldGui = playerGui:FindFirstChild("FlyGui")
-	if oldGui then
-		oldGui:Destroy()
-		print("[FlyInvencible] ✅ GUI antigua eliminada")
-	end
-
-	local oldLoadingGui = playerGui:FindFirstChild("FlyGui_Loading")
-	if oldLoadingGui then
-		oldLoadingGui:Destroy()
-		print("[FlyInvencible] ✅ Loading GUI antigua eliminada")
-	end
-
-	-- Destruir la flag antigua
-	existingFlag:Destroy()
-
-	-- Pequeña espera para asegurar limpieza
-	task.wait(0.2)
-end
-
--- Crear nueva flag para marcar esta ejecución como activa
-local scriptFlag = Instance.new("BoolValue")
-scriptFlag.Name = SCRIPT_IDENTIFIER
-scriptFlag.Value = true
-scriptFlag.Parent = player
-
-print("[FlyInvencible] ✅ Nueva instancia iniciada correctamente")
--- ============= FIN SISTEMA ANTI-DUPLICACIÓN =============
-
 -- Configuración
 local BASE_SPEED = 39.93
 local BOOST_SPEEDS = {79.87, 199.66, 319.46}
@@ -76,9 +37,6 @@ local BOOST_PITCH_DEG = -90
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local hrp = character:WaitForChild("HumanoidRootPart")
--- AnimationController separado SOLO para animaciones Prepared
-local preparedAnimController = nil
-local preparedAnimator = nil
 
 -- Estado
 local flying = false
@@ -118,59 +76,6 @@ local function removeBodyMovers()
 	if bodyGyro then pcall(function() bodyGyro:Destroy() end) bodyGyro = nil end
 end
 
--- ============= ANIMATIONCONTROLLER SEPARADO PARA PREPARED =============
-local function createPreparedAnimationController()
-	-- Limpiar controlador previo si existe
-	if preparedAnimController then
-		pcall(function() preparedAnimController:Destroy() end)
-		preparedAnimController = nil
-		preparedAnimator = nil
-	end
-
-	-- Crear nuevo AnimationController en HumanoidRootPart
-	preparedAnimController = Instance.new("AnimationController")
-	preparedAnimController.Name = "PreparedFlightAnimController"
-	preparedAnimController.Parent = hrp
-
-	-- Crear Animator dentro del controller
-	preparedAnimator = Instance.new("Animator")
-	preparedAnimator.Parent = preparedAnimController
-
-	print("✅ AnimationController separado creado para Prepared")
-end
-
-local function destroyPreparedAnimationController()
-	-- Limpiar conexiones de animaciones combinadas
-	if preparedAnim1Connection then
-		preparedAnim1Connection:Disconnect()
-		preparedAnim1Connection = nil
-	end
-	if preparedAnim2Connection then
-		preparedAnim2Connection:Disconnect()
-		preparedAnim2Connection = nil
-	end
-
-	-- Destruir controller completo (esto detiene TODAS sus animaciones automáticamente)
-	if preparedAnimController then
-		pcall(function() preparedAnimController:Destroy() end)
-		preparedAnimController = nil
-		preparedAnimator = nil
-	end
-
-	-- Reset tracks
-	preparedAnim1Track = nil
-	preparedAnim2Track = nil
-
-	-- Reset variables
-	prepared_anim1_Reversing = false
-	prepared_anim1_ManualTime = 0
-	prepared_anim2_Reversing = false
-	prepared_anim2_ManualTime = PREPARED_ANIM2_START_TIME
-
-	print("🧹 AnimationController de Prepared destruido")
-end
--- ============= FIN ANIMATIONCONTROLLER SEPARADO =============
-
 -- Animaciones
 local ANIMATIONS_BASIC = {
 	IDLE = {
@@ -178,13 +83,40 @@ local ANIMATIONS_BASIC = {
 		HIGH_2 = "rbxassetid://153839856",
 		LOW_1 = "rbxassetid://74909500",
 		CUT_TO = 0.386
+	},
+	FORWARD = {
+		HIGH_1 = "rbxassetid://74909537",
+		HIGH_2 = "rbxassetid://153839856",
+		LOW_1 = "rbxassetid://97172005",
+		LOW_2 = "rbxassetid://161235826",
+		LOW_3 = "rbxassetid://97169019", -- ADDED: quinta animación (LOW_3)
+		CUT_TO = 0.386
+	},
+	BACKWARD = {
+		HIGH_1 = "rbxassetid://74909537",
+		HIGH_2 = "rbxassetid://153839856",
+		LOW_1 = "rbxassetid://69803972",
+		LOW_2 = "rbxassetid://161235826",
+		CUT_TO = 0.386
 	}
 }
 
 local ANIMATIONS_PREPARED = {
 	IDLE = {
-		-- Sistema de animaciones combinadas (reversa suave)
-		COMBINED = true  -- Flag para indicar sistema especial
+		HIGH_1 = "rbxassetid://157568994",
+		LOW_1 = "rbxassetid://97172005",
+		LOW_2 = "rbxassetid://161235826"
+	},
+	FORWARD = {
+		HIGH_1 = "rbxassetid://157568994",
+		LOW_1 = "rbxassetid://97172005",
+		LOW_2 = "rbxassetid://161235826",
+		LOW_3 = "rbxassetid://97169019"
+	},
+	BACKWARD = {
+		HIGH_1 = "rbxassetid://157568994",
+		LOW_1 = "rbxassetid://69803972",
+		LOW_2 = "rbxassetid://161235826"
 	}
 }
 
@@ -217,206 +149,8 @@ local animTracks = {}
 local currentAnimState = nil
 local flightAnimMode = "BasicFly"
 
--- ============= SISTEMA DE ANIMACIÓN COMBINADA (PREPARED IDLE) =============
-local preparedAnim1Track = nil
-local preparedAnim2Track = nil
-local preparedAnim1Connection = nil
-local preparedAnim2Connection = nil
-
--- Configuración Animación 1 (Alta Prioridad)
-local PREPARED_ANIM1_ID = "rbxassetid://69427262"
-local PREPARED_ANIM1_SPEED = 2
-local PREPARED_ANIM1_CUT_TIME = 2.000
-local prepared_anim1_Reversing = false
-local prepared_anim1_ManualTime = 0
-local prepared_lastAnim1Update = 0
-
--- Configuración Animación 2 (Baja Prioridad)
-local PREPARED_ANIM2_ID = "rbxassetid://97171309"
-local PREPARED_ANIM2_SPEED = 0.18
-local PREPARED_ANIM2_START_TIME = 0.412
-local PREPARED_ANIM2_END_TIME = 0.585
-local prepared_anim2_Reversing = false
-local prepared_anim2_ManualTime = PREPARED_ANIM2_START_TIME
-local prepared_lastAnim2Update = 0
--- ============= FIN VARIABLES ANIMACIÓN COMBINADA =============
-
 -- NEW: table of preloaded Animation objects (NOT tracks)
 local preloadedAnimations = {}
-
--- CHANGED: loadAnimation ahora soporta usar el Animator del humanoid O el de Prepared
-local function loadAnimation(animId, usePreparedController)
-	if not animId then return nil end
-
-	-- Determinar qué animator usar
-	local targetAnimator = humanoid
-	if usePreparedController and preparedAnimator then
-		targetAnimator = preparedAnimator
-	end
-
-	-- If we have a preloaded Animation object, load from it
-	if preloadedAnimations[animId] then
-		local ok, track = pcall(function() return targetAnimator:LoadAnimation(preloadedAnimations[animId]) end)
-		if ok and track then return track end
-		-- fallback to dynamic creation below if LoadAnimation failed
-	end
-
-	-- Fallback: create an Animation instance and load a track (not stored)
-	local a = Instance.new("Animation")
-	a.AnimationId = animId
-	local ok2, track2 = pcall(function() return targetAnimator:LoadAnimation(a) end)
-	if ok2 and track2 then return track2 end
-	return nil
-end
-
--- ============= FUNCIONES ANIMACIÓN COMBINADA PREPARED =============
-local function handlePreparedAnim1ReverseSmooth()
-	-- VERIFICAR: Solo ejecutar si flying, modo Prepared, y sin boost activo
-	if not flying or flightAnimMode ~= "FlyPrepared" or boostLevel ~= 0 then
-		return
-	end
-
-	if not preparedAnim1Track or not preparedAnim1Track.IsPlaying then
-		return
-	end
-
-	local currentTick = tick()
-	local deltaTime = currentTick - prepared_lastAnim1Update
-	prepared_lastAnim1Update = currentTick
-
-	if not prepared_anim1_Reversing then
-		-- Modo normal: avanzar
-		prepared_anim1_ManualTime = prepared_anim1_ManualTime + (deltaTime * PREPARED_ANIM1_SPEED)
-
-		if prepared_anim1_ManualTime >= PREPARED_ANIM1_CUT_TIME then
-			prepared_anim1_Reversing = true
-			prepared_anim1_ManualTime = PREPARED_ANIM1_CUT_TIME
-		end
-	else
-		-- Modo reverso: retroceder
-		prepared_anim1_ManualTime = prepared_anim1_ManualTime - (deltaTime * PREPARED_ANIM1_SPEED)
-
-		if prepared_anim1_ManualTime <= 0 then
-			prepared_anim1_Reversing = false
-			prepared_anim1_ManualTime = 0
-		end
-	end
-
-	-- Aplicar el tiempo manualmente
-	preparedAnim1Track.TimePosition = prepared_anim1_ManualTime
-end
-
-local function handlePreparedAnim2ReverseSmooth()
-	-- VERIFICAR: Solo ejecutar si flying, modo Prepared, y sin boost activo
-	if not flying or flightAnimMode ~= "FlyPrepared" or boostLevel ~= 0 then
-		return
-	end
-
-	if not preparedAnim2Track or not preparedAnim2Track.IsPlaying then
-		return
-	end
-
-	local currentTick = tick()
-	local deltaTime = currentTick - prepared_lastAnim2Update
-	prepared_lastAnim2Update = currentTick
-
-	if not prepared_anim2_Reversing then
-		-- Modo normal: avanzar
-		prepared_anim2_ManualTime = prepared_anim2_ManualTime + (deltaTime * PREPARED_ANIM2_SPEED)
-
-		if prepared_anim2_ManualTime >= PREPARED_ANIM2_END_TIME then
-			prepared_anim2_Reversing = true
-			prepared_anim2_ManualTime = PREPARED_ANIM2_END_TIME
-		end
-	else
-		-- Modo reverso: retroceder
-		prepared_anim2_ManualTime = prepared_anim2_ManualTime - (deltaTime * PREPARED_ANIM2_SPEED)
-
-		if prepared_anim2_ManualTime <= PREPARED_ANIM2_START_TIME then
-			prepared_anim2_Reversing = false
-			prepared_anim2_ManualTime = PREPARED_ANIM2_START_TIME
-		end
-	end
-
-	-- Aplicar el tiempo manualmente
-	preparedAnim2Track.TimePosition = prepared_anim2_ManualTime
-end
-
-local function stopPreparedCombinedAnimations()
-	-- Simplemente destruir el controller completo (detiene todo automáticamente)
-	destroyPreparedAnimationController()
-end
-
-local function playPreparedCombinedAnimations()
-	-- VERIFICAR: Solo activar si está en modo Prepared y sin boost
-	if flightAnimMode ~= "FlyPrepared" or boostLevel ~= 0 then
-		print("⚠️ Animaciones combinadas bloqueadas (modo incorrecto o boost activo)")
-		return
-	end
-
-	-- Detener y recrear el controller desde cero
-	destroyPreparedAnimationController()
-	task.wait(0.05)
-	createPreparedAnimationController()
-
-	if not preparedAnimator then
-		warn("❌ No se pudo crear AnimationController de Prepared")
-		return
-	end
-
-	-- Cargar y reproducir Animación 1 (Alta Prioridad) usando el controller separado
-	preparedAnim1Track = loadAnimation(PREPARED_ANIM1_ID, true)  -- true = usar prepared controller
-	if preparedAnim1Track then
-		preparedAnim1Track.Priority = Enum.AnimationPriority.Action4
-		preparedAnim1Track.Looped = false
-		preparedAnim1Track:Play()
-		task.wait(0.05)
-		preparedAnim1Track:AdjustSpeed(0)
-		preparedAnim1Track.TimePosition = 0
-		prepared_anim1_ManualTime = 0
-		prepared_lastAnim1Update = tick()
-
-		-- Conectar actualización
-		preparedAnim1Connection = RunService.Heartbeat:Connect(handlePreparedAnim1ReverseSmooth)
-
-		-- Auto-restart si se detiene (pero solo si no hay boost)
-		preparedAnim1Track.Stopped:Connect(function()
-			if preparedAnim1Track and flying and flightAnimMode == "FlyPrepared" and boostLevel == 0 then
-				preparedAnim1Track:Play()
-				preparedAnim1Track:AdjustSpeed(0)
-			end
-		end)
-
-		print("✅ Prepared Anim 1 activa (controller separado)")
-	end
-
-	-- Cargar y reproducir Animación 2 (Baja Prioridad) usando el controller separado
-	preparedAnim2Track = loadAnimation(PREPARED_ANIM2_ID, true)  -- true = usar prepared controller
-	if preparedAnim2Track then
-		preparedAnim2Track.Priority = Enum.AnimationPriority.Idle
-		preparedAnim2Track.Looped = false
-		preparedAnim2Track:Play()
-		task.wait(0.05)
-		preparedAnim2Track:AdjustSpeed(0)
-		preparedAnim2Track.TimePosition = PREPARED_ANIM2_START_TIME
-		prepared_anim2_ManualTime = PREPARED_ANIM2_START_TIME
-		prepared_lastAnim2Update = tick()
-
-		-- Conectar actualización
-		preparedAnim2Connection = RunService.Heartbeat:Connect(handlePreparedAnim2ReverseSmooth)
-
-		-- Auto-restart si se detiene (pero solo si no hay boost)
-		preparedAnim2Track.Stopped:Connect(function()
-			if preparedAnim2Track and flying and flightAnimMode == "FlyPrepared" and boostLevel == 0 then
-				preparedAnim2Track:Play()
-				preparedAnim2Track:AdjustSpeed(0)
-			end
-		end)
-
-		print("✅ Prepared Anim 2 activa (controller separado)")
-	end
-end
-
 
 local function stopAllAnimations()
 	for _, track in pairs(animTracks) do
@@ -427,10 +161,26 @@ local function stopAllAnimations()
 	end
 	animTracks = {}
 	currentAnimState = nil
-
-	-- TAMBIÉN detener animaciones combinadas de Prepared
-	stopPreparedCombinedAnimations()
 	-- preloadedAnimations remain intact (we only stored Animation objects)
+end
+
+-- CHANGED: loadAnimation now prefers preloaded Animation assets (and creates track on demand)
+local function loadAnimation(animId)
+	if not animId then return nil end
+
+	-- If we have a preloaded Animation object, load from it
+	if preloadedAnimations[animId] then
+		local ok, track = pcall(function() return humanoid:LoadAnimation(preloadedAnimations[animId]) end)
+		if ok and track then return track end
+		-- fallback to dynamic creation below if LoadAnimation failed
+	end
+
+	-- Fallback: create an Animation instance and load a track (not stored)
+	local a = Instance.new("Animation")
+	a.AnimationId = animId
+	local ok2, track2 = pcall(function() return humanoid:LoadAnimation(a) end)
+	if ok2 and track2 then return track2 end
+	return nil
 end
 
 -- NEW: precarga el Animation asset (no reproduce)
@@ -440,6 +190,12 @@ local function preloadAnimationAsset(animId)
 	local a = Instance.new("Animation")
 	a.AnimationId = animId
 	preloadedAnimations[animId] = a
+end
+
+-- NEW: createFrozenForwardTrack now only precarga la animación (no play)
+local function createFrozenForwardTrack()
+	-- precarga el asset para la animación forward extra (no se reproduce)
+	preloadAnimationAsset("rbxassetid://97169019")
 end
 
 local function playStateAnimations(stateKey)
@@ -493,23 +249,13 @@ local function playStateAnimations(stateKey)
 	end
 end
 
-local function playIdleAnimations()
-	-- Si está en modo Prepared, usar sistema combinado
-	if flightAnimMode == "FlyPrepared" then
-		playPreparedCombinedAnimations()
-	else
-		-- Modo Basic: animaciones normales
-		playStateAnimations("IDLE")
-	end
-end
+local function playIdleAnimations() playStateAnimations("IDLE") end
+local function playForwardAnimations() playStateAnimations("FORWARD") end
+local function playBackwardAnimations() playStateAnimations("BACKWARD") end
 
 local function playBoostAnimation(level)
 	if not BOOST_LEVELS[level] then return end
 	stopAllAnimations()
-
-	-- CRÍTICO: Detener animaciones combinadas de Prepared antes de boost
-	stopPreparedCombinedAnimations()
-
 	currentAnimState = "BOOST_" .. level
 
 	local cfg = BOOST_LEVELS[level]
@@ -518,25 +264,14 @@ local function playBoostAnimation(level)
 	if cfg.ANIMATION_HIGH then
 		local tr = loadAnimation(cfg.ANIMATION_HIGH)
 		if tr then
+			tr.Looped = false
 			tr.Priority = Enum.AnimationPriority.Action3
-
-			-- ESPECIAL: Boost Nivel 1 se reproduce normalmente (sin congelar)
-			if level == 1 then
-				tr.Looped = true  -- Loop continuo para que no termine
-				tr:Play()
-				tr:AdjustSpeed(1)  -- Velocidad normal (no congelada)
-				print("🚀 Animación Boost 1 reproduciéndose en loop")
-			else
-				-- Niveles 2 y 3 siguen congelados como antes
-				tr.Looped = false
-				tr:Play()
-				tr:AdjustSpeed(0)  -- Congelada
-				if cfg.ANIMATION_HIGH_CUT then
-					task.wait()
-					pcall(function() tr.TimePosition = cfg.ANIMATION_HIGH_CUT end)
-				end
+			tr:Play()
+			tr:AdjustSpeed(0)
+			if cfg.ANIMATION_HIGH_CUT then
+				task.wait()
+				pcall(function() tr.TimePosition = cfg.ANIMATION_HIGH_CUT end)
 			end
-
 			table.insert(tracks, tr)
 		end
 	end
@@ -620,7 +355,7 @@ local function isPlayerMoving()
 		return true
 	end
 	if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.A) or
-	   UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.D) then
+		UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.D) then
 		return true
 	end
 	return false
@@ -665,10 +400,8 @@ local function collectAnimationIds()
 			if type(v) == "string" then add(v) end
 		end
 	end
-	-- agregar animaciones del sistema combinado Prepared
-	add(PREPARED_ANIM1_ID)
-	add(PREPARED_ANIM2_ID)
-
+	-- always include frozen forward
+	add("rbxassetid://97169019")
 	-- convert to array
 	local out = {}
 	for k,_ in pairs(ids) do table.insert(out, k) end
@@ -746,18 +479,16 @@ pctLabel.ZIndex = 1001
 loadingGui.Parent = playerGui
 splashFrame.BackgroundTransparency = 0.05
 
--- MAIN screenGui (UI principal). Lo creamos pero NO lo ponemos aú n en PlayerGui hasta que termine la precarga
+-- MAIN screenGui (UI principal). Lo creamos pero NO lo ponemos aún en PlayerGui hasta que termine la precarga
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "FlyGui"
 screenGui.ResetOnSpawn = false
 
 -- --- (UI CREATION: flyBtn / indicator / mode gui / boostBtn)
--- Crear botón de vuelo (JUSTO DEBAJO DEL BOOST)
+-- Crear botón de vuelo
 local flyBtn = Instance.new("ImageButton")
 flyBtn.Name = "Flybtn"
--- Boost está en Y=0.262, con altura de 83px
--- Calculamos: 0.262 + (83px en escala) + pequeño espacio
-flyBtn.Position = UDim2.new(0.855, 0, 0.354, 0)  -- Justo debajo con pequeño gap
+flyBtn.Position = UDim2.new(0.855, 0, 0.426, 0)
 flyBtn.Size = UDim2.new(0, 173, 0, 83)
 flyBtn.BackgroundTransparency = 1
 flyBtn.BorderSizePixel = 0
@@ -779,15 +510,14 @@ local isHovering = false
 local isPressing = false
 local originalSize = UDim2.new(0, 173, 0, 83)
 local pressedSize = UDim2.new(0, 146, 0, 56)
--- Calcular posición original basada en la posición actual del botón
-local originalPos = flyBtn.Position
-local pressedPos = originalPos + UDim2.new(0, (173-146)/2, 0, (83-56)/2)
+local originalPos = UDim2.new(0.855, 0, 0.426, 0)
+local pressedPos = UDim2.new(0.855, 0, 0.426, 0) + UDim2.new(0, (173-146)/2, 0, (83-56)/2)
 
 -- Función para animar el botón al presionarlo
 local function animatePress()
 	if isPressing then return end
 	isPressing = true
-	
+
 	-- Tween down (0.12 segundos suave)
 	local tweenDown = TweenService:Create(
 		flyBtn,
@@ -795,7 +525,7 @@ local function animatePress()
 		{Size = pressedSize, Position = pressedPos}
 	)
 	tweenDown:Play()
-	
+
 	-- Iluminar overlay (0.18 segundos progresivo)
 	local tweenOverlay = TweenService:Create(
 		overlay,
@@ -803,25 +533,25 @@ local function animatePress()
 		{BackgroundTransparency = 0.3}
 	)
 	tweenOverlay:Play()
-	
+
 	tweenDown.Completed:Connect(function()
 		-- Esperar un poco y luego recuperar posición
 		task.wait(0.08)
-		
+
 		local tweenUp = TweenService:Create(
 			flyBtn,
 			TweenInfo.new(0.16, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
 			{Size = originalSize, Position = originalPos}
 		)
 		tweenUp:Play()
-		
+
 		local tweenOverlayOff = TweenService:Create(
 			overlay,
 			TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
 			{BackgroundTransparency = 1}
 		)
 		tweenOverlayOff:Play()
-		
+
 		tweenUp.Completed:Connect(function()
 			isPressing = false
 		end)
@@ -832,7 +562,7 @@ end
 local function setHoverState(hovering)
 	if isHovering == hovering then return end
 	isHovering = hovering
-	
+
 	if hovering then
 		local tweenHoverDown = TweenService:Create(
 			flyBtn,
@@ -840,7 +570,7 @@ local function setHoverState(hovering)
 			{Size = UDim2.new(0, 160, 0, 73), Position = UDim2.new(0.855, 0, 0.426, 0) + UDim2.new(0, 6.5, 0, 5)}
 		)
 		tweenHoverDown:Play()
-		
+
 		local tweenHoverOverlay = TweenService:Create(
 			overlay,
 			TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
@@ -854,7 +584,7 @@ local function setHoverState(hovering)
 			{Size = originalSize, Position = originalPos}
 		)
 		tweenHoverUp:Play()
-		
+
 		local tweenHoverOverlayOff = TweenService:Create(
 			overlay,
 			TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
@@ -864,7 +594,7 @@ local function setHoverState(hovering)
 	end
 end
 
--- Función para cambiar la imágen del botón
+-- Función para cambiar la imagen del botón
 local function updateFlyButtonImage()
 	if flying then
 		flyBtn.Image = "rbxassetid://102164454407163" -- Encendido
@@ -874,7 +604,7 @@ local function updateFlyButtonImage()
 end
 
 -- ========== INDICADOR DE VELOCIDAD (SOLO IMAGELABEL) ==========
--- INDICADOR: configuración de IDs de imágen para los estados
+-- INDICADOR: configuración de IDs de imagen para los estados
 local INDICATOR_IMAGES = {
 	[0] = "rbxassetid://108793750615658", -- nivel 0 (aparece cuando Flybtn=true)
 	[1] = "rbxassetid://81527091583929",  -- nivel 1
@@ -949,7 +679,7 @@ local function setIndicatorState(level)
 	end
 
 	currentIndicatorState = level
-	-- cambiar imágen con fade y pequeño salto elegante
+	-- cambiar imagen con fade y pequeño salto elegante
 	local newImage = INDICATOR_IMAGES[level] or INDICATOR_IMAGES[0]
 	-- Fade out current quickly, switch image, fade in slowly
 	local fadeOut = TweenService:Create(indicator, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {ImageTransparency = 0.7})
@@ -967,12 +697,12 @@ end
 -- ========== FIN INDICADOR ==========
 
 -- ========== MODE GUI ==========
--- Crear GUI de modos: toggle draggable (cí rculo gris oscuro) y panel de modos
+-- Crear GUI de modos: toggle draggable (círculo gris oscuro) y panel de modos
 local modeGui = Instance.new("Folder")
 modeGui.Name = "ModeGui"
 modeGui.Parent = screenGui
 
--- Toggle (cí rculo gris oscuro, draggable)
+-- Toggle (círculo gris oscuro, draggable)
 local modeToggle = Instance.new("ImageButton")
 modeToggle.Name = "ModeToggle"
 modeToggle.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -980,7 +710,7 @@ modeToggle.Position = UDim2.new(0.08, 0, 0.5, 0) -- posición inicial (movible)
 modeToggle.Size = UDim2.new(0, 54, 0, 54)
 modeToggle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 modeToggle.BackgroundTransparency = 0
-modeToggle.Image = "" -- sin imágen, solo color
+modeToggle.Image = "" -- sin imagen, solo color
 modeToggle.AutoButtonColor = false
 modeToggle.BorderSizePixel = 0
 modeToggle.ZIndex = 20
@@ -1181,7 +911,7 @@ dragConnection = UserInputService.InputChanged:Connect(function(input)
 	if input == dragInput and dragging and startPos and dragStart then
 		local delta = input.Position - dragStart
 		local screenSize = workspace.CurrentCamera.ViewportSize
-		-- compute new posición in UDim2 space (approx)
+		-- compute new position in UDim2 space (approx)
 		local x = (startPos.X.Offset + delta.X) / screenSize.X
 		local y = (startPos.Y.Offset + delta.Y) / screenSize.Y
 		-- clamp between 0.05 and 0.95
@@ -1229,7 +959,7 @@ hideModePanel()
 -- Evento del botón: Click
 flyBtn.MouseButton1Click:Connect(function()
 	animatePress()
-	
+
 	-- Ejecutar lógica de vuelo
 	flying = not flying
 	if flying then
@@ -1238,16 +968,14 @@ flyBtn.MouseButton1Click:Connect(function()
 		wasMoving = isPlayerMoving()
 		createBodyMovers()
 		humanoid.PlatformStand = true
-
-		-- CRÍTICO: Solo reproducir IDLE si no hay boost activo
+		playIdleAnimations()
 		if boostLevel == 0 then
 			targetSpeed = BASE_SPEED
 			targetFOV = FOV_BASE
-			playIdleAnimations()  -- Aquí se activan animaciones combinadas si es Prepared
 		else
 			targetSpeed = BOOST_SPEEDS[boostLevel]
 			targetFOV = FOV_LEVELS[boostLevel]
-			playBoostAnimation(boostLevel)  -- Esto ya detiene combinadas
+			playBoostAnimation(boostLevel)
 		end
 		print("Vuelo activado")
 		-- Show indicator (nivel 0 por defecto)
@@ -1264,7 +992,7 @@ flyBtn.MouseButton1Click:Connect(function()
 		-- Hide indicator
 		hideIndicator()
 	end
-	
+
 	updateFlyButtonImage()
 end)
 
@@ -1275,6 +1003,46 @@ end)
 
 flyBtn.MouseLeave:Connect(function()
 	setHoverState(false)
+end)
+
+-- Toggle vuelo con tecla F
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.F then
+		animatePress()
+
+		flying = not flying
+		if flying then
+			levBaseY = hrp.Position.Y
+			tAccum = 0
+			wasMoving = isPlayerMoving()
+			createBodyMovers()
+			humanoid.PlatformStand = true
+			playIdleAnimations()
+			if boostLevel == 0 then
+				targetSpeed = BASE_SPEED
+				targetFOV = FOV_BASE
+			else
+				targetSpeed = BOOST_SPEEDS[boostLevel]
+				targetFOV = FOV_LEVELS[boostLevel]
+				playBoostAnimation(boostLevel)
+			end
+			print("Vuelo activado")
+			showIndicator()
+			setIndicatorState(boostLevel or 0)
+		else
+			removeBodyMovers()
+			humanoid.PlatformStand = false
+			boostLevel = 0
+			targetSpeed = BASE_SPEED
+			targetFOV = FOV_BASE
+			stopAllAnimations()
+			print("Vuelo desactivado")
+			hideIndicator()
+		end
+
+		updateFlyButtonImage()
+	end
 end)
 
 -- ============= BOOST BUTTON CREATION =============
@@ -1309,7 +1077,7 @@ local boostPressedPos = UDim2.new(0.855, 0, 0.262, 0) + UDim2.new(0, (173-146)/2
 local function animateBoostPress()
 	if boostIsPressing then return end
 	boostIsPressing = true
-	
+
 	-- Tween down (0.12 segundos suave)
 	local tweenDown = TweenService:Create(
 		boostBtn,
@@ -1317,7 +1085,7 @@ local function animateBoostPress()
 		{Size = boostPressedSize, Position = boostPressedPos}
 	)
 	tweenDown:Play()
-	
+
 	-- Iluminar overlay (0.18 segundos progresivo)
 	local tweenOverlay = TweenService:Create(
 		boostOverlay,
@@ -1325,25 +1093,25 @@ local function animateBoostPress()
 		{BackgroundTransparency = 0.3}
 	)
 	tweenOverlay:Play()
-	
+
 	tweenDown.Completed:Connect(function()
 		-- Esperar un poco y luego recuperar posición
 		task.wait(0.08)
-		
+
 		local tweenUp = TweenService:Create(
 			boostBtn,
 			TweenInfo.new(0.16, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
 			{Size = boostOriginalSize, Position = boostOriginalPos}
 		)
 		tweenUp:Play()
-		
+
 		local tweenOverlayOff = TweenService:Create(
 			boostOverlay,
 			TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
 			{BackgroundTransparency = 1}
 		)
 		tweenOverlayOff:Play()
-		
+
 		tweenUp.Completed:Connect(function()
 			boostIsPressing = false
 		end)
@@ -1354,7 +1122,7 @@ end
 local function setBoostHoverState(hovering)
 	if boostIsHovering == hovering then return end
 	boostIsHovering = hovering
-	
+
 	if hovering then
 		local tweenHoverDown = TweenService:Create(
 			boostBtn,
@@ -1362,7 +1130,7 @@ local function setBoostHoverState(hovering)
 			{Size = UDim2.new(0, 160, 0, 73), Position = UDim2.new(0.855, 0, 0.262, 0) + UDim2.new(0, 6.5, 0, 5)}
 		)
 		tweenHoverDown:Play()
-		
+
 		local tweenHoverOverlay = TweenService:Create(
 			boostOverlay,
 			TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
@@ -1376,7 +1144,7 @@ local function setBoostHoverState(hovering)
 			{Size = boostOriginalSize, Position = boostOriginalPos}
 		)
 		tweenHoverUp:Play()
-		
+
 		local tweenHoverOverlayOff = TweenService:Create(
 			boostOverlay,
 			TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
@@ -1388,73 +1156,19 @@ end
 
 -- Función para procesar boost click (ciclo de 4 niveles: 0 -> 1 -> 2 -> 3 -> 0)
 local function processBoostClick()
-	-- Verificar si el boost está bloqueado
-	if not flying then
-		-- Feedback visual: parpadeo rojo suave cuando está bloqueado
-		local originalColor = boostBtn.ImageColor3
-		boostBtn.ImageColor3 = Color3.fromRGB(255, 100, 100)
-
-		-- Pequeña vibración
-		local originalPos = boostBtn.Position
-		local shake1 = TweenService:Create(boostBtn, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{Position = originalPos + UDim2.new(0, -4, 0, 0)})
-		local shake2 = TweenService:Create(boostBtn, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{Position = originalPos + UDim2.new(0, 4, 0, 0)})
-		local shake3 = TweenService:Create(boostBtn, TweenInfo.new(0.08, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
-			{Position = originalPos})
-
-		shake1:Play()
-		shake1.Completed:Connect(function()
-			shake2:Play()
-			shake2.Completed:Connect(function()
-				shake3:Play()
-			end)
-		end)
-
-		-- Restaurar color original
-		task.delay(0.25, function()
-			local colorRestore = TweenService:Create(boostBtn, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
-				{ImageColor3 = originalColor})
-			colorRestore:Play()
-		end)
-
-		print("⚠️ Boost bloqueado: Activa el vuelo primero")
+	-- Solo funciona si flying = true Y el jugador se está moviendo
+	if not flying or not isPlayerMoving() then
 		return
 	end
 
-	-- Verificar si el jugador no se está moviendo
-	if not isPlayerMoving() then
-		-- Feedback visual sutil: parpadeo amarillo
-		local originalColor = boostBtn.ImageColor3
-		boostBtn.ImageColor3 = Color3.fromRGB(255, 220, 100)
-
-		task.delay(0.2, function()
-			local colorRestore = TweenService:Create(boostBtn, TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
-				{ImageColor3 = originalColor})
-			colorRestore:Play()
-		end)
-
-		print("⚠️ Boost bloqueado: Debes estar en movimiento")
-		return
-	end
-	
 	-- Ciclo correcto: 0 -> 1 -> 2 -> 3 -> 0
 	boostLevel = (boostLevel + 1) % 4
-	
+
 	if boostLevel == 0 then
-		print("🔄 Volviendo a nivel 0...")
-
-		-- Detener animaciones de boost del humanoid
-		stopAllAnimations()
-
-		-- Configurar velocidad y FOV
 		targetSpeed = BASE_SPEED
 		targetFOV = FOV_BASE
-
-		-- Activar IDLE (esto maneja prepared automáticamente)
 		playIdleAnimations()
-
-		print("✅ Boost desactivado (Nivel 0)")
+		print("Boost desactivado (Nivel 0)")
 	elseif boostLevel == 1 then
 		targetSpeed = BOOST_SPEEDS[1]
 		targetFOV = FOV_LEVELS[1]
@@ -1485,16 +1199,82 @@ boostBtn.MouseButton1Click:Connect(function()
 	processBoostClick()
 end)
 
--- Hover events para boost button (SIEMPRE permitir hover)
+-- Hover events para boost button
 boostBtn.MouseEnter:Connect(function()
-	setBoostHoverState(true)
+	if flying then
+		setBoostHoverState(true)
+	end
 end)
 
 boostBtn.MouseLeave:Connect(function()
 	setBoostHoverState(false)
 end)
 
+-- Control de boost con teclas numéricas
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+
+	-- Solo procesar si está volando Y moviéndose
+	if not flying or not isPlayerMoving() then return end
+
+	local targetBoostLevel = nil
+
+	if input.KeyCode == Enum.KeyCode.One then
+		targetBoostLevel = 1
+	elseif input.KeyCode == Enum.KeyCode.Two then
+		targetBoostLevel = 2
+	elseif input.KeyCode == Enum.KeyCode.Three then
+		targetBoostLevel = 3
+	elseif input.KeyCode == Enum.KeyCode.Four then
+		targetBoostLevel = 0
+	end
+
+	if targetBoostLevel ~= nil then
+		animateBoostPress()
+		boostLevel = targetBoostLevel
+
+		if boostLevel == 0 then
+			targetSpeed = BASE_SPEED
+			targetFOV = FOV_BASE
+			playIdleAnimations()
+			print("Boost desactivado (Nivel 0)")
+		elseif boostLevel == 1 then
+			targetSpeed = BOOST_SPEEDS[1]
+			targetFOV = FOV_LEVELS[1]
+			playBoostAnimation(1)
+			print("Boost activado: Nivel 1")
+		elseif boostLevel == 2 then
+			targetSpeed = BOOST_SPEEDS[2]
+			targetFOV = FOV_LEVELS[2]
+			playBoostAnimation(2)
+			print("Boost activado: Nivel 2")
+		elseif boostLevel == 3 then
+			targetSpeed = BOOST_SPEEDS[3]
+			targetFOV = FOV_LEVELS[3]
+			playBoostAnimation(3)
+			print("Boost activado: Nivel 3")
+		end
+
+		if flying then
+			showIndicator()
+			setIndicatorState(boostLevel)
+		end
+	end
+end)
+
 -- NOTE: tecla "M" removida. Cambiar de modo ahora desde el GUI de modos.
+
+-- Atajo para abrir/cerrar Flight Modes con tecla B
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.B then
+		if modePanelVisible then
+			hideModePanel()
+		else
+			showModePanel()
+		end
+	end
+end)
 
 -- Main loop
 RunService.RenderStepped:Connect(function(dt)
@@ -1505,15 +1285,11 @@ RunService.RenderStepped:Connect(function(dt)
 	local movingNow = isPlayerMoving()
 	if wasMoving and not movingNow then
 		if boostLevel ~= 0 then
-			-- Detener animaciones de boost
-			stopAllAnimations()
-
 			boostLevel = 0
 			targetSpeed = BASE_SPEED
 			targetFOV = FOV_BASE
 			playIdleAnimations()
-
-			-- Actualizar indicador
+			-- actualizar indicador a nivel 0 cuando el jugador ya no se mueve
 			if flying then
 				showIndicator()
 				setIndicatorState(0)
@@ -1561,33 +1337,54 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
-	-- Orientación (solo rotación básica hacia cámara, inclinaciones SOLO en boost)
+	-- Orientación + inclinaciones
 	local camLook = camera.CFrame.LookVector
 	local desiredCFrameBase = CFrame.lookAt(hrp.Position, hrp.Position + camLook, Vector3.new(0, 1, 0))
 
-	local finalTiltForward = 0
-	local finalTiltSide = 0
-
-	-- SOLO aplicar inclinación si hay boost activo
-	if boostLevel > 0 and inputMag > INPUT_DEADZONE then 
-		finalTiltForward = BOOST_PITCH_DEG
+	local tiltForward = 0
+	local tiltSide = 0
+	if inputMag > INPUT_DEADZONE then
+		local nx = fwdAxis / math.max(1, inputMag)
+		local ny = rightAxis / math.max(1, inputMag)
+		tiltForward = -INPUT_TILT_MAX * math.clamp(nx, -1, 1)
+		tiltSide = INPUT_ROLL_MAX * math.clamp(ny, -1, 1) * -1
 	end
+
+	local finalTiltForward = tiltForward
+	local finalTiltSide = tiltSide
+	if boostLevel > 0 and inputMag > INPUT_DEADZONE then finalTiltForward = BOOST_PITCH_DEG end
+
+	local cameraPitchDeg = math.deg(math.asin(math.clamp(camera.CFrame.LookVector.Y, -1, 1)))
+	local cameraTiltContribution = -cameraPitchDeg * CAMERA_TILT_INFLUENCE
+	finalTiltForward = finalTiltForward + cameraTiltContribution
+	finalTiltForward = math.clamp(finalTiltForward, -90, 90)
+	finalTiltSide = math.clamp(finalTiltSide, -45, 45)
 
 	local tiltCFrame = CFrame.Angles(math.rad(finalTiltForward), 0, math.rad(finalTiltSide))
 	local desiredBodyCFrame = desiredCFrameBase * tiltCFrame
-
 	if bodyGyro then
 		bodyGyro.CFrame = bodyGyro.CFrame:Lerp(desiredBodyCFrame, math.clamp(dt * ROT_LERP, 0, 1))
 		bodyGyro.P = 3000
 		bodyGyro.D = 200
 	end
 
-	-- Cámara sin roll
-	currentCamRoll = currentCamRoll + (0 - currentCamRoll) * math.clamp(dt * 8, 0, 1)
+	local targetCamRoll = math.rad(finalTiltSide) * CAMERA_ROLL_INFLUENCE
+	currentCamRoll = currentCamRoll + (targetCamRoll - currentCamRoll) * math.clamp(dt * 8, 0, 1)
 	local camPos = camera.CFrame.Position
 	local camLookVec = camera.CFrame.LookVector
 	local desiredCamCFrame2 = CFrame.lookAt(camPos, camPos + camLookVec, Vector3.new(0, 1, 0)) * CFrame.Angles(0, 0, currentCamRoll)
 	camera.CFrame = camera.CFrame:Lerp(desiredCamCFrame2, math.clamp(dt * 8, 0, 1))
+
+	-- Animaciones
+	if boostLevel == 0 then
+		if inputMag > INPUT_DEADZONE and fwdAxis > 0.25 then
+			playForwardAnimations()
+		elseif inputMag > INPUT_DEADZONE and fwdAxis < -0.25 then
+			playBackwardAnimations()
+		else
+			playIdleAnimations()
+		end
+	end
 end)
 
 -- Respawn handling
@@ -1604,8 +1401,6 @@ humanoid.Died:Connect(function()
 		-- Hide indicator on death
 		hideIndicator()
 	end
-	-- Destruir controller separado de Prepared
-	destroyPreparedAnimationController()
 	-- hide mode panel and reset toggle on death
 	hideModePanel()
 	modeToggle.Position = UDim2.new(0.08, 0, 0.5, 0)
@@ -1639,12 +1434,9 @@ player.CharacterAdded:Connect(function(char)
 	modeToggle.Position = UDim2.new(0.08, 0, 0.5, 0)
 	modeErrorPopup.Visible = false
 
-	-- Destruir y limpiar controller de Prepared
-	destroyPreparedAnimationController()
-
-	-- Crear nuevo controller para el nuevo character
-	createPreparedAnimationController()
-	end)
+	-- recreate precached forward animation asset for new humanoid (no play)
+	createFrozenForwardTrack()
+end)
 
 -- create precache now (initial humanoid loaded)
 -- Preload logic: sequential to display progress
@@ -1701,7 +1493,7 @@ task.spawn(function()
 	-- Play a little completion animation on splash
 	pctLabel.Text = "100%"
 	TweenService:Create(progressFill, TweenInfo.new(0.28, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Size = UDim2.new(1, 0, 1, 0)}):Play()
-	detailLabel.Text = "✅ Listo! inicializando UI..."
+	detailLabel.Text = "¡Listo! inicializando UI..."
 	task.wait(0.45)
 
 	-- Hide splash gracefully
@@ -1714,17 +1506,8 @@ task.spawn(function()
 	-- Attach main UI
 	screenGui.Parent = player:WaitForChild("PlayerGui")
 
-	end)
-
-
--- Inicializar AnimationController de Prepared
-createPreparedAnimationController()
-print("FlyInvencible Ultimate (parcheado) cargado — iniciando precarga de assets.")
-
--- Limpiar flag cuando el jugador salga o el script termine
-player.AncestryChanged:Connect(function()
-	if scriptFlag and scriptFlag.Parent then
-		scriptFlag:Destroy()
-		print("[FlyInvencible] 🧹 Flag limpiada al salir")
-	end
+	-- ensure frozen animation is cached
+	createFrozenForwardTrack()
 end)
+
+print("FlyInvencible Ultimate (parcheado) cargado — iniciando precarga de assets.")
