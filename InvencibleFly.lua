@@ -79,7 +79,6 @@ end
 -- Animaciones
 local ANIMATIONS_BASIC = {
 	IDLE = {
-		HIGH_1 = "rbxassetid://97172005",
 		HIGH_2 = "rbxassetid://97172005",
 		LOW_1 = "rbxassetid://74909500",
 		CUT_TO = 0.386
